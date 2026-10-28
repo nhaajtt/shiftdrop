@@ -229,7 +229,9 @@ pub fn run() {
                     std::thread::sleep(std::time::Duration::from_secs(3));
                     windows::show_overlay(&h, 1000, 600, &[f.into()]);
                     std::thread::sleep(std::time::Duration::from_millis(500));
-                    windows::overlay_pointer(&h, 1000, 600 - 100, false);
+                    // SHIFTDROP_DEMO_HOVER=dx,dy points somewhere else than the top wedge
+                    let (dx, dy) = std::env::var("SHIFTDROP_DEMO_HOVER").ok().and_then(|v| v.split_once(',').and_then(|(a, b)| Some((a.trim().parse().ok()?, b.trim().parse().ok()?)))).unwrap_or((0, -100));
+                    windows::overlay_pointer(&h, 1000 + dx, 600 + dy, false);
                     if std::env::var_os("SHIFTDROP_DEMO_DROP").is_some() {
                         std::thread::sleep(std::time::Duration::from_secs(4));
                         windows::overlay_pointer(&h, 1000, 600, true);

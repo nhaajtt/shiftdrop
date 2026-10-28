@@ -461,6 +461,8 @@ export function noteUse(kind, id) {
 export const defaultOf = (it) => (it.editor || it.action || it.app || it.shelf || it.share ? it : it.sub?.[it.def ?? 0] ?? null);
 
 export const MORE = { id: 'more', label: 'More', glyph: '⋯', more: true };
+/** How many extra actions fit around the More wedge before "All…". */
+const MORE_RING = 10;
 
 /** The menu as shown: { center, items (≤ MAX, maybe ending in More), all, kind }. */
 export { extList };
@@ -486,7 +488,16 @@ export function menuFor(paths, apps = []) {
         .slice(0, MAX - 1)
         .map(([it]) => it),
     );
-    items = [...cand.filter((it) => keep.has(it)), MORE];
+    // hovering More shows the next actions in the outer ring, like any other wedge,
+    // with "All…" at the end for the searchable list
+    const rest = all
+      .map((it, i) => [it, i])
+      .filter(([it]) => !keep.has(it) && defaultOf(it))
+      .sort((a, b) => score(b[0]) - score(a[0]) || a[1] - b[1])
+      .slice(0, MORE_RING)
+      .map(([it]) => ({ ...defaultOf(it), label: it.label, title: defaultOf(it).title || it.label, from: it.id }));
+    const allItem = { label: 'All…', more: true };
+    items = [...cand.filter((it) => keep.has(it)), { ...MORE, sub: [...rest, allItem], def: rest.length }];
   }
   const pinned = all.find((it) => it.id === p.center?.[kind]);
   const center = (pinned && defaultOf(pinned)) || raw.center;

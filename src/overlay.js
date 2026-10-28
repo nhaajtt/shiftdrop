@@ -184,7 +184,8 @@ function target() {
 
 async function drop() {
   const t = target();
-  if (t && hot?.ring > 0) noteUse(menu.kind, menu.items[hot.i].id);
+  // an action picked from around More counts for that action, so it can earn a wedge
+  if (t && hot?.ring > 0) noteUse(menu.kind, t.from || menu.items[hot.i].id);
   try {
     if (t?.more) await invoke('open_hub', { paths, view: 'more', item: null });
     else if (t?.ask) await invoke('open_hub', { paths, view: 'ask', item: t });
