@@ -69,6 +69,7 @@ function imageMenu(e, multi) {
       def: 1,
       sub: [75, 50, 25].map((v) => ({ label: `${v}%`, title: `Resizing to ${v}%`, action: { op: 'resize', value: v } })),
     },
+    toPhone,
     {
       label: 'Rotate',
       glyph: '↻',
@@ -167,6 +168,7 @@ function videoMenu(e, multi) {
   items.push(multi ? merge() : { label: 'Trim', glyph: '✂', editor: 'trim' });
   items.push(clean);
   items.splice(2, 0, fitSize);
+  items.splice(4, 0, toPhone);
   const extra = [
     speed,
     { label: 'Flip', glyph: '⇋', def: 0, sub: [{ label: 'Mirror', title: 'Flipping', action: { op: 'flip', dir: 'h' } }, { label: 'Upside down', title: 'Flipping', action: { op: 'flip', dir: 'v' } }] },
@@ -194,6 +196,7 @@ function audioMenu(e, multi) {
       ],
     },
     multi ? merge() : { label: 'Trim', glyph: '✂', editor: 'trim' },
+    toPhone,
     clean,
   ];
   return { center: convert(same(e, 'mp3') ? 'm4a' : 'mp3'), items, extra: [fitSize, speed, cleanAudio, subtitles(false), ...common()] };
@@ -212,6 +215,7 @@ function pdfMenu(multi) {
     },
     { label: 'Split', glyph: '⊟', title: 'Splitting pages', action: { op: 'split' } },
   ];
+  items.push(toPhone);
   if (multi) items.push(merge('Merging PDFs'));
   else items.push({ label: 'Pages', glyph: '▤', editor: 'pages', keywords: 'reorder delete remove rotate extract' }, { label: 'Sign', glyph: '✍', editor: 'sign', keywords: 'signature stamp' });
   items.push({ label: 'Text', glyph: 'T', title: 'Getting text', action: { op: 'pdf_text' }, keywords: 'ocr extract txt scanned' });
@@ -230,7 +234,7 @@ function pdfMenu(multi) {
 function officeMenu(e) {
   const to = (f, label = f.toUpperCase()) => ({ label, title: `Converting to ${f.toUpperCase()}`, action: { op: 'convert', to: f } });
   const words = ['doc', 'docx', 'docm', 'odt', 'rtf'].includes(e);
-  const items = [{ ...to('pdf', 'PDF'), glyph: '⇄' }];
+  const items = [{ ...to('pdf', 'PDF'), glyph: '⇄' }, toPhone];
   if (words) items.push({ ...to('txt', 'Text'), glyph: 'T' });
   if (e !== 'docx' && words) items.push({ ...to('docx', 'DOCX'), glyph: 'W' });
   if (e === 'docx') items.push({ ...to('md', 'Markdown'), glyph: 'M' });
@@ -289,7 +293,7 @@ const base64 = { label: 'Base64', glyph: '⌁', title: 'Encoding Base64', action
 const shelf = { label: 'Shelf', glyph: '⊞', shelf: true, keywords: 'keep later stash basket collect' };
 const toPhone = { label: 'To phone', glyph: '▯', share: 'phone', keywords: 'send share wifi lan qr mobile transfer' };
 const upload = { label: 'Upload link', glyph: '☁', share: 'upload', keywords: 'share r2 cloudflare link cloud' };
-const common = () => [shelf, toPhone, upload, identify, virusTotal, encrypt, shred, locks, pathAs, base64];
+const common = () => [shelf, upload, identify, virusTotal, encrypt, shred, locks, pathAs, base64];
 const copyPath = { label: 'Path', title: 'Copying path', action: { op: 'copy_path' } };
 
 /** "Open in" with the installed tools for these kinds, or null when none are installed. */
@@ -306,7 +310,7 @@ function textMenu(e, multi, apps, paths) {
   if (['csv', 'tsv'].includes(e)) to.push('json');
   if (e === 'json') to.push('csv');
   for (const f of ['json', 'yaml', 'toml']) if (['json', 'yaml', 'yml', 'toml', 'xml'].includes(e) && f !== e && !(f === 'yaml' && e === 'yml') && !to.includes(f)) to.push(f);
-  const items = [convertItem(to, e)];
+  const items = [convertItem(to, e), toPhone];
   if (multi && paths.length === 2) items.unshift({ label: 'Compare', glyph: '⇆', title: 'Comparing', action: { op: 'diff' }, keywords: 'diff' });
   if (e === 'json')
     items.push({
@@ -368,6 +372,7 @@ function exeMenu(multi, apps) {
 function archiveMenu(apps) {
   const items = [
     { label: 'Extract', glyph: '⇪', title: 'Extracting', action: { op: 'extract' } },
+    toPhone,
     hash,
     { label: 'Copy', glyph: '⧉', title: copyPath.title, action: copyPath.action },
     openIn(apps, ['any']),
@@ -381,6 +386,7 @@ function genericMenu(paths, apps, lead = []) {
   const items = [
     ...lead,
     zip,
+    toPhone,
     files && hash,
     { label: 'Copy', glyph: '⧉', title: copyPath.title, action: copyPath.action },
     openIn(apps, ['any']),
