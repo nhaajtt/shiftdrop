@@ -99,7 +99,7 @@ pub fn queue(app: &AppHandle, paths: Vec<PathBuf>, action: Action, title: String
 
 /// Opens File Explorer with the file selected.
 #[tauri::command]
-pub fn reveal(path: String) -> Result<(), String> {
+pub async fn reveal(path: String) -> Result<(), String> {
     let p = PathBuf::from(&path);
     if !p.exists() {
         return Err("file not found".into());

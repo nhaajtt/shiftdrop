@@ -5253,7 +5253,7 @@ dependencies = [
 
 [[package]]
 name = "shiftdrop"
-version = "1.0.6"
+version = "1.0.7"
 dependencies = [
  "age",
  "anyhow",

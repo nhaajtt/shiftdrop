@@ -118,13 +118,13 @@ fn find_ghidra() -> Option<PathBuf> {
 }
 
 #[tauri::command]
-pub fn get_apps() -> Vec<App> {
+pub async fn get_apps() -> Vec<App> {
     all().to_vec()
 }
 
 /// Opens the files in an installed tool. x64dbg switches to x32dbg for 32-bit programs.
 #[tauri::command]
-pub fn open_with(app: String, paths: Vec<String>) -> Result<(), String> {
+pub async fn open_with(app: String, paths: Vec<String>) -> Result<(), String> {
     let apps = all();
     let mut chosen = apps.iter().find(|a| a.id == app).ok_or("that app isn't installed")?;
     if app == "x64dbg" && paths.first().and_then(|p| crate::engines::files::pe_is_64(Path::new(p))) == Some(false) {

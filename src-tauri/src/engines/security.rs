@@ -602,7 +602,7 @@ pub struct ToolInfo {
 }
 
 #[tauri::command]
-pub fn tools_status() -> Vec<ToolInfo> {
+pub async fn tools_status() -> Vec<ToolInfo> {
     TOOLS.iter().map(|t| ToolInfo { id: t.0, installed: tool_path(t.0).is_some() && tool_extras(t.0).iter().all(|(_, n, _)| tool_file(t.0, n).is_some()) }).collect()
 }
 

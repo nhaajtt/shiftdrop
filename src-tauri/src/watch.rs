@@ -93,6 +93,6 @@ fn ignorable(p: &PathBuf) -> bool {
 }
 
 #[tauri::command]
-pub fn folder_exists(path: String) -> bool {
+pub async fn folder_exists(path: String) -> bool {
     std::path::Path::new(&path).is_dir()
 }

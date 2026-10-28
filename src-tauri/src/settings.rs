@@ -208,7 +208,7 @@ pub fn get_autostart(app: AppHandle) -> bool {
 }
 
 #[tauri::command]
-pub fn set_autostart(app: AppHandle, on: bool) -> Result<(), String> {
+pub async fn set_autostart(app: AppHandle, on: bool) -> Result<(), String> {
     use tauri_plugin_autostart::ManagerExt;
     let al = app.autolaunch();
     if on { al.enable() } else { al.disable() }.map_err(|e| e.to_string())

@@ -123,6 +123,6 @@ fn ms_office(app: &str, src: &Path, out: &Path, to: &str) -> Result<()> {
 }
 
 #[tauri::command]
-pub fn office_ok() -> bool {
+pub async fn office_ok() -> bool {
     libreoffice().is_some() || ["Word", "Excel", "PowerPoint"].iter().any(|a| installed(a))
 }

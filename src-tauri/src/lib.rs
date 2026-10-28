@@ -43,7 +43,7 @@ pub fn log(msg: &str) {
 
 /// Opens the log folder in Explorer.
 #[tauri::command]
-fn open_logs() -> Result<(), String> {
+async fn open_logs() -> Result<(), String> {
     let dir = log_dir();
     let _ = std::fs::create_dir_all(&dir);
     std::process::Command::new("explorer").arg(dir).spawn().map(|_| ()).map_err(|e| e.to_string())
@@ -52,7 +52,7 @@ fn open_logs() -> Result<(), String> {
 /// Opens a new GitHub issue with the app and Windows versions filled in. Nothing is sent by
 /// the app itself; the user reviews the text in the browser before submitting.
 #[tauri::command]
-fn report_bug(app: tauri::AppHandle, context: Option<String>) -> Result<(), String> {
+async fn report_bug(app: tauri::AppHandle, context: Option<String>) -> Result<(), String> {
     let version = app.package_info().version.to_string();
     let build = std::process::Command::new("cmd").args(["/C", "ver"]).output().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default();
     let message = context.map(|c| format!("**Message**\n```\n{c}\n```\n\n")).unwrap_or_default();
@@ -115,7 +115,7 @@ fn start_drag_watch(app: tauri::AppHandle) {
                     if settings::get(&app).peek {
                         let paths = explorer::selection(root);
                         if let Some(p) = paths.first() {
-                            let _ = windows::open_peek(app.clone(), p.display().to_string());
+                            let _ = windows::open_peek_now(app.clone(), p.display().to_string());
                         }
                     }
                 }
@@ -158,7 +158,7 @@ fn opened_with(app: &tauri::AppHandle, argv: Vec<String>) {
         std::thread::spawn(move || {
             std::thread::sleep(std::time::Duration::from_millis(350));
             let paths = std::mem::take(&mut *PENDING.lock().unwrap());
-            let _ = windows::open_hub(app, paths, "actions".into(), None);
+            let _ = windows::open_hub_now(app, paths, "actions".into(), None);
         });
     }
 }
@@ -241,19 +241,19 @@ pub fn run() {
             #[cfg(debug_assertions)]
             if let Ok(v) = std::env::var("SHIFTDROP_EDIT") {
                 if let Some((tool, path)) = v.split_once('|') {
-                    let _ = windows::open_editor(handle.clone(), path.into(), tool.into());
+                    let _ = windows::open_editor_now(handle.clone(), path.into(), tool.into());
                 }
             }
             #[cfg(debug_assertions)]
             if let Ok(v) = std::env::var("SHIFTDROP_HUB") {
                 let files = std::env::var("SHIFTDROP_HUB_FILES").map(|f| f.split(';').map(String::from).collect()).unwrap_or_default();
-                let _ = windows::open_hub(handle.clone(), files, v, None);
+                let _ = windows::open_hub_now(handle.clone(), files, v, None);
             }
             watch::start(handle.clone());
             if first {
                 // first launch: the app lives in the tray, so say hello and show how it works
                 let _ = autostart_on_first_run(&handle);
-                let _ = windows::open_hub(handle.clone(), vec![], "welcome".into(), None);
+                let _ = windows::open_hub_now(handle.clone(), vec![], "welcome".into(), None);
             }
             opened_with(&handle, std::env::args().collect());
             start_drag_watch(handle);

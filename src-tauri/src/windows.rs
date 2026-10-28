@@ -147,8 +147,14 @@ pub fn toast_hide(app: AppHandle) {
 }
 
 /// Opens an editor (crop, add-bg, redact, trim) for one file.
+/// Windows can't create a window inside a synchronous command (the UI thread would wait on
+/// itself), so the command is async and the tray and background threads call `open_editor_now`.
 #[tauri::command]
-pub fn open_editor(app: AppHandle, path: String, tool: String) -> Result<(), String> {
+pub async fn open_editor(app: AppHandle, path: String, tool: String) -> Result<(), String> {
+    open_editor_now(app, path, tool)
+}
+
+pub fn open_editor_now(app: AppHandle, path: String, tool: String) -> Result<(), String> {
     static N: AtomicU32 = AtomicU32::new(0);
     let p = PathBuf::from(&path);
     if !p.is_file() {
@@ -184,8 +190,14 @@ pub struct HubOpen {
 static HUB: Mutex<Option<HubOpen>> = Mutex::new(None);
 
 /// The main window: every action for the files ("More…"), the shelf, history and settings.
+/// Windows can't create a window inside a synchronous command (the UI thread would wait on
+/// itself), so the command is async and the tray and background threads call `open_hub_now`.
 #[tauri::command]
-pub fn open_hub(app: AppHandle, paths: Vec<String>, view: String, item: Option<serde_json::Value>) -> Result<(), String> {
+pub async fn open_hub(app: AppHandle, paths: Vec<String>, view: String, item: Option<serde_json::Value>) -> Result<(), String> {
+    open_hub_now(app, paths, view, item)
+}
+
+pub fn open_hub_now(app: AppHandle, paths: Vec<String>, view: String, item: Option<serde_json::Value>) -> Result<(), String> {
     let req = HubOpen { view, paths, item };
     *HUB.lock().unwrap() = Some(req.clone());
     if let Some(w) = app.get_webview_window("hub") {
@@ -215,8 +227,14 @@ pub fn hub_take() -> Option<HubOpen> {
 static SHELF: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
 /// A small always-on-top shelf at the right edge: collect files from anywhere, drag them out later.
+/// Windows can't create a window inside a synchronous command (the UI thread would wait on
+/// itself), so the command is async and the tray and background threads call `shelf_add_now`.
 #[tauri::command]
-pub fn shelf_add(app: AppHandle, paths: Vec<String>) -> Result<(), String> {
+pub async fn shelf_add(app: AppHandle, paths: Vec<String>) -> Result<(), String> {
+    shelf_add_now(app, paths)
+}
+
+pub fn shelf_add_now(app: AppHandle, paths: Vec<String>) -> Result<(), String> {
     SHELF.lock().unwrap().extend(paths.iter().cloned());
     if let Some(w) = app.get_webview_window("shelf") {
         let _ = w.emit("shelf:add", std::mem::take(&mut *SHELF.lock().unwrap()));
@@ -261,8 +279,14 @@ pub fn drag_icon() -> Result<String, String> {
 }
 
 /// Quick look at a file (Ctrl+Space in Explorer): image, video, audio, PDF, text or details.
+/// Windows can't create a window inside a synchronous command (the UI thread would wait on
+/// itself), so the command is async and the tray and background threads call `open_peek_now`.
 #[tauri::command]
-pub fn open_peek(app: AppHandle, path: String) -> Result<(), String> {
+pub async fn open_peek(app: AppHandle, path: String) -> Result<(), String> {
+    open_peek_now(app, path)
+}
+
+pub fn open_peek_now(app: AppHandle, path: String) -> Result<(), String> {
     let p = PathBuf::from(&path);
     if !p.exists() {
         return Err("file not found".into());
@@ -289,7 +313,7 @@ pub fn open_peek(app: AppHandle, path: String) -> Result<(), String> {
 
 /// The start of a text file (for previews), as UTF-8.
 #[tauri::command]
-pub fn read_text(path: String, max: usize) -> Result<String, String> {
+pub async fn read_text(path: String, max: usize) -> Result<String, String> {
     use std::io::Read;
     let mut buf = vec![0u8; max];
     let n = std::fs::File::open(&path).and_then(|mut f| f.read(&mut buf)).map_err(|e| e.to_string())?;
@@ -312,7 +336,7 @@ pub struct FileInfo {
 }
 
 #[tauri::command]
-pub fn file_info(path: String) -> Result<FileInfo, String> {
+pub async fn file_info(path: String) -> Result<FileInfo, String> {
     let p = PathBuf::from(&path);
     let m = std::fs::metadata(&p).map_err(|e| e.to_string())?;
     let modified = m.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs()).unwrap_or(0);

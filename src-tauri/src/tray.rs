@@ -49,13 +49,13 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
                     app.exit(0)
                 }
                 "open" => {
-                    let _ = crate::windows::open_hub(app.clone(), vec![], "actions".into(), None);
+                    let _ = crate::windows::open_hub_now(app.clone(), vec![], "actions".into(), None);
                 }
                 "welcome" => {
-                    let _ = crate::windows::open_hub(app.clone(), vec![], "welcome".into(), None);
+                    let _ = crate::windows::open_hub_now(app.clone(), vec![], "welcome".into(), None);
                 }
                 "shelf" => {
-                    let _ = crate::windows::shelf_add(app.clone(), vec![]);
+                    let _ = crate::windows::shelf_add_now(app.clone(), vec![]);
                 }
                 "enabled" => settings::update(app, |s| s.enabled = !s.enabled),
                 "explorer_only" => settings::update(app, |s| s.explorer_only = !s.explorer_only),

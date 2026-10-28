@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 /// Moves files to the Recycle Bin, so "Undo" can itself be undone from there.
 #[tauri::command]
-pub fn trash(paths: Vec<String>) -> Result<(), String> {
+pub async fn trash(paths: Vec<String>) -> Result<(), String> {
     #[cfg(windows)]
     {
         use windows_sys::Win32::UI::Shell::{SHFileOperationW, FOF_ALLOWUNDO, FOF_NOCONFIRMATION, FOF_NOERRORUI, FOF_SILENT, FO_DELETE, SHFILEOPSTRUCTW};
@@ -35,7 +35,7 @@ pub fn trash(paths: Vec<String>) -> Result<(), String> {
 
 /// Files copied in Explorer, or a copied image saved to Pictures\ShiftDrop.
 #[tauri::command]
-pub fn clipboard_files() -> Result<Vec<String>, String> {
+pub async fn clipboard_files() -> Result<Vec<String>, String> {
     #[cfg(windows)]
     {
         if let Some(files) = clip::files() {
@@ -134,7 +134,7 @@ mod clip {
 
 /// Renames files (old, new full paths). Goes through temporary names so swaps work.
 #[tauri::command]
-pub fn rename_files(pairs: Vec<(String, String)>) -> Result<usize, String> {
+pub async fn rename_files(pairs: Vec<(String, String)>) -> Result<usize, String> {
     let pairs: Vec<(PathBuf, PathBuf)> = pairs.into_iter().map(|(a, b)| (PathBuf::from(a), PathBuf::from(b))).filter(|(a, b)| a != b).collect();
     let sources: std::collections::HashSet<_> = pairs.iter().map(|(a, _)| a.to_string_lossy().to_lowercase()).collect();
     let mut seen = std::collections::HashSet::new();
@@ -161,7 +161,7 @@ pub fn rename_files(pairs: Vec<(String, String)>) -> Result<usize, String> {
 
 /// "ShiftDrop" in Explorer's right-click menu (per user, no admin rights needed).
 #[tauri::command]
-pub fn context_menu(enable: bool) -> Result<(), String> {
+pub async fn context_menu(enable: bool) -> Result<(), String> {
     #[cfg(windows)]
     {
         let exe = std::env::current_exe().map_err(|e| e.to_string())?;
@@ -187,7 +187,7 @@ pub fn context_menu(enable: bool) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn context_menu_on() -> bool {
+pub async fn context_menu_on() -> bool {
     #[cfg(windows)]
     return crate::engines::tools::quiet(Path::new("reg"))
         .args(["query", r"HKCU\Software\Classes\*\shell\ShiftDrop\command"])
