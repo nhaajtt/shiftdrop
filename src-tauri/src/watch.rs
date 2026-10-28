@@ -54,6 +54,7 @@ pub fn start(app: AppHandle) {
                         continue;
                     }
                     match serde_json::from_value::<Action>(w.action.clone()) {
+                        Ok(action) if !unattended_ok(&action) => crate::log(&format!("watch {}: action not allowed unattended", w.folder)),
                         Ok(action) => {
                             crate::log(&format!("watch {}: {}", w.folder, p.display()));
                             let _ = crate::jobs::queue(&app, vec![p], action, w.title.clone());
@@ -64,6 +65,25 @@ pub fn start(app: AppHandle) {
             }
         }
     });
+}
+
+/// Files arriving in a watched folder can come from anyone (a download, a share). Nothing that
+/// runs commands, destroys data or sends the file off this PC is done without the user present.
+fn unattended_ok(a: &Action) -> bool {
+    match a {
+        Action::Chain { steps } => steps.iter().all(unattended_ok),
+        Action::Custom { .. }
+        | Action::Shred
+        | Action::Sandbox
+        | Action::Encrypt { .. }
+        | Action::Decrypt { .. }
+        | Action::Protect { .. }
+        | Action::Unprotect { .. }
+        | Action::VirusTotal
+        | Action::AskClaude { .. }
+        | Action::Tool { .. } => false,
+        _ => true,
+    }
 }
 
 /// Browser partial downloads and temporary files.

@@ -289,8 +289,16 @@ fn decrypt(src: &Path, password: &str) -> Result<PathBuf> {
 /// Overwrites the file with random bytes, renames it, then deletes it. On SSDs this is best effort.
 fn shred(p: &Path) -> Result<()> {
     use std::io::{Seek, Write};
-    let len = std::fs::metadata(p)?.len();
+    // a link would make us overwrite some other file: the link target, or every hard-linked copy
+    let meta = std::fs::symlink_metadata(p)?;
+    if !meta.is_file() || meta.file_type().is_symlink() {
+        bail!("{} is a link or folder, not a plain file", name(p));
+    }
+    let len = meta.len();
     let mut f = std::fs::OpenOptions::new().write(true).open(p)?;
+    if links(&f) > 1 {
+        bail!("{} has other hard links; shredding it would destroy them too", name(p));
+    }
     let mut x: u64 = 0x9E37_79B9_7F4A_7C15 ^ len ^ std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_nanos() as u64;
     let mut buf = vec![0u8; 1 << 20];
     f.seek(std::io::SeekFrom::Start(0))?;
@@ -312,6 +320,23 @@ fn shred(p: &Path) -> Result<()> {
     std::fs::rename(p, &tmp)?;
     std::fs::remove_file(tmp)?;
     Ok(())
+}
+
+#[cfg(windows)]
+fn links(f: &std::fs::File) -> u32 {
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::Storage::FileSystem::{GetFileInformationByHandle, BY_HANDLE_FILE_INFORMATION};
+    let mut info: BY_HANDLE_FILE_INFORMATION = unsafe { std::mem::zeroed() };
+    if unsafe { GetFileInformationByHandle(f.as_raw_handle() as _, &mut info) } == 0 {
+        return u32::MAX;
+    }
+    info.nNumberOfLinks
+}
+
+#[cfg(not(windows))]
+fn links(f: &std::fs::File) -> u32 {
+    use std::os::unix::fs::MetadataExt;
+    f.metadata().map(|m| m.nlink() as u32).unwrap_or(u32::MAX)
 }
 
 // --- Who is using the file (Restart Manager) ----------------------------------------------
@@ -367,11 +392,10 @@ fn virustotal(src: &Path) -> Result<()> {
         note("Opened the VirusTotal report for this hash");
         return Ok(());
     }
-    let out = super::tools::quiet(&curl())
-        .args(["-s", "--max-time", "20", "-H"])
-        .arg(format!("x-apikey: {}", key.trim()))
-        .arg(format!("https://www.virustotal.com/api/v3/files/{hash}"))
-        .output()?;
+    let out = curl_secret(
+        super::tools::quiet(&curl()).args(["-s", "--max-time", "20"]).arg(format!("https://www.virustotal.com/api/v3/files/{hash}")),
+        &format!("header = \"x-apikey: {}\"", key.trim()),
+    )?;
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap_or_default();
     if v["error"]["code"] == "NotFoundError" {
         note(&format!("{}: VirusTotal has never seen this file", name(src)));
@@ -389,6 +413,16 @@ fn virustotal(src: &Path) -> Result<()> {
         let _ = open_url(&url);
     }
     Ok(())
+}
+
+/// Runs curl with secrets (API keys, passwords) passed as a config on stdin, so they never
+/// appear on the command line where other programs can list them.
+pub fn curl_secret(cmd: &mut std::process::Command, config: &str) -> Result<std::process::Output> {
+    use std::io::Write;
+    use std::process::Stdio;
+    let mut child = cmd.arg("-K").arg("-").stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
+    child.stdin.take().context("no stdin")?.write_all(config.as_bytes())?;
+    Ok(child.wait_with_output()?)
 }
 
 pub fn curl() -> PathBuf {
@@ -431,7 +465,7 @@ fn tool_extras(id: &str) -> &'static [(&'static str, &'static str, u64)] {
         "whisper" => &[(WHISPER_MODEL, "ggml-base.bin", 10_000_000)],
         "ai" => &[
             ("https://github.com/danielgatis/rembg/releases/download/v0.0.0/isnet-general-use.onnx", "isnet-general-use.onnx", 10_000_000),
-            ("https://github.com/onnx/models/raw/main/validated/vision/body_analysis/ultraface/models/version-RFB-320.onnx", "version-RFB-320.onnx", 500_000),
+            ("https://github.com/onnx/models/raw/4c46cd00fbdb7cd30b6c1c17ab54f2e1f4f7b177/validated/vision/body_analysis/ultraface/models/version-RFB-320.onnx", "version-RFB-320.onnx", 500_000),
         ],
         _ => &[],
     }

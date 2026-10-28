@@ -212,6 +212,11 @@ fn chain(paths: &[PathBuf], steps: &[Action], progress: Progress) -> Result<Vec<
 fn custom(src: &std::path::Path, command: &str) -> Result<Vec<PathBuf>> {
     use crate::naming::{ext, stem};
     let dir = src.parent().map(|d| d.to_path_buf()).unwrap_or_default();
+    // the names are pasted into a cmd line, sometimes outside quotes: a file called
+    // "a & del x.txt" must never become a second command
+    if src.to_string_lossy().contains(['&', '|', '<', '>', '^', '%', '"']) {
+        bail!("this file name has characters (& | < > ^ %) that are unsafe in a command line; rename it first");
+    }
     let q = |s: &str| format!("\"{s}\"");
     let line = command
         .replace("{file}", &q(&src.display().to_string()))

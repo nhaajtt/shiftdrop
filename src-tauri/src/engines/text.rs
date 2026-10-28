@@ -51,7 +51,7 @@ td,th{border:1px solid #ccc;padding:4px 8px;text-align:left}th{background:#f2f2f
 img{max-width:100%}blockquote{margin-left:0;padding-left:16px;border-left:3px solid #ccc;color:#555}";
 
 fn page(title: &str, body: &str) -> String {
-    format!("<!doctype html><html><head><meta charset=\"utf-8\"><title>{}</title><style>{STYLE}</style></head><body>{body}</body></html>", escape(title))
+    format!("<!doctype html><html><head><meta charset=\"utf-8\"><meta http-equiv=\"Content-Security-Policy\" content=\"script-src 'none'; connect-src 'none'\"><title>{}</title><style>{STYLE}</style></head><body>{body}</body></html>", escape(title))
 }
 
 pub fn to_html(src: &Path) -> Result<String> {
@@ -103,8 +103,14 @@ fn to_pdf(src: &Path) -> Result<PathBuf> {
     let out = out_path(src, None, "pdf");
     let profile = std::env::temp_dir().join("shiftdrop").join("edge");
     let mut cmd = Command::new(edge);
+    // the page may be a stranger's HTML: with no network at all (no DNS, every request sent to
+    // a dead proxy) printing it can't tell anyone the file was opened or leak what is in it
     cmd.arg("--headless=new")
         .arg("--disable-gpu")
+        .arg("--host-resolver-rules=MAP * ~NOTFOUND")
+        .arg("--proxy-server=127.0.0.1:9")
+        .arg("--proxy-bypass-list=<-loopback>")
+        .arg("--disable-extensions")
         .arg("--no-pdf-header-footer")
         .arg(format!("--user-data-dir={}", profile.display()))
         .arg(format!("--print-to-pdf={}", out.display()))

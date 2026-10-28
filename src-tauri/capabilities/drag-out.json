@@ -1,0 +1,12 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "drag-out",
+  "description": "Only the shelf and the toast start file drags out of the app.",
+  "windows": [
+    "shelf",
+    "toast"
+  ],
+  "permissions": [
+    "drag:default"
+  ]
+}

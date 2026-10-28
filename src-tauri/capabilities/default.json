@@ -1,15 +1,19 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Own windows only: events, hide/close self, drag-drop on overlay.",
-  "windows": ["overlay", "toast", "editor-*", "hub", "shelf", "peek"],
+  "description": "Every ShiftDrop window: events, hide/close itself, move itself.",
+  "windows": [
+    "overlay",
+    "toast",
+    "editor-*",
+    "hub",
+    "shelf",
+    "peek"
+  ],
   "permissions": [
     "core:default",
     "core:window:allow-hide",
     "core:window:allow-close",
-    "core:window:allow-start-dragging",
-    "drag:default",
-    "updater:default",
-    "process:allow-restart"
+    "core:window:allow-start-dragging"
   ]
 }

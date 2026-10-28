@@ -100,13 +100,15 @@ fn installed(app: &str) -> bool {
 }
 
 /// Drives Office through COM from PowerShell; paths go in environment variables, never in the script.
+/// AutomationSecurity=3 (force disable) keeps macros in the document from running: Office
+/// otherwise enables them for automation.
 fn ms_office(app: &str, src: &Path, out: &Path, to: &str) -> Result<()> {
     let script = match (app, to) {
-        ("Word", "pdf") => "$a=New-Object -ComObject Word.Application;$a.Visible=$false;$d=$a.Documents.Open($env:SD_IN,$false,$true);$d.ExportAsFixedFormat($env:SD_OUT,17);$d.Close($false);$a.Quit()",
-        ("Word", "docx") => "$a=New-Object -ComObject Word.Application;$a.Visible=$false;$d=$a.Documents.Open($env:SD_IN,$false,$true);$d.SaveAs2($env:SD_OUT,16);$d.Close($false);$a.Quit()",
-        ("Word", "txt") => "$a=New-Object -ComObject Word.Application;$a.Visible=$false;$d=$a.Documents.Open($env:SD_IN,$false,$true);$d.SaveAs2($env:SD_OUT,7,$false,'',$false,'',$false,$false,$false,$false,$false,65001);$d.Close($false);$a.Quit()",
-        ("Excel", "pdf") => "$a=New-Object -ComObject Excel.Application;$a.DisplayAlerts=$false;$b=$a.Workbooks.Open($env:SD_IN,0,$true);$b.ExportAsFixedFormat(0,$env:SD_OUT);$b.Close($false);$a.Quit()",
-        ("PowerPoint", "pdf") => "$a=New-Object -ComObject PowerPoint.Application;$p=$a.Presentations.Open($env:SD_IN,$true,$false,$false);$p.SaveAs($env:SD_OUT,32);$p.Close();$a.Quit()",
+        ("Word", "pdf") => "$a=New-Object -ComObject Word.Application;$a.AutomationSecurity=3;$a.Visible=$false;$d=$a.Documents.Open($env:SD_IN,$false,$true);$d.ExportAsFixedFormat($env:SD_OUT,17);$d.Close($false);$a.Quit()",
+        ("Word", "docx") => "$a=New-Object -ComObject Word.Application;$a.AutomationSecurity=3;$a.Visible=$false;$d=$a.Documents.Open($env:SD_IN,$false,$true);$d.SaveAs2($env:SD_OUT,16);$d.Close($false);$a.Quit()",
+        ("Word", "txt") => "$a=New-Object -ComObject Word.Application;$a.AutomationSecurity=3;$a.Visible=$false;$d=$a.Documents.Open($env:SD_IN,$false,$true);$d.SaveAs2($env:SD_OUT,7,$false,'',$false,'',$false,$false,$false,$false,$false,65001);$d.Close($false);$a.Quit()",
+        ("Excel", "pdf") => "$a=New-Object -ComObject Excel.Application;$a.AutomationSecurity=3;$a.DisplayAlerts=$false;$b=$a.Workbooks.Open($env:SD_IN,0,$true);$b.ExportAsFixedFormat(0,$env:SD_OUT);$b.Close($false);$a.Quit()",
+        ("PowerPoint", "pdf") => "$a=New-Object -ComObject PowerPoint.Application;$a.AutomationSecurity=3;$p=$a.Presentations.Open($env:SD_IN,$true,$false,$false);$p.SaveAs($env:SD_OUT,32);$p.Close();$a.Quit()",
         _ => bail!("{app} can't make .{to}"),
     };
     let o = super::tools::quiet(Path::new("powershell"))

@@ -3,7 +3,7 @@
 //! - to the user's own Cloudflare R2 bucket (link copied),
 //! and translating or summarising text with the user's own Claude API key.
 
-use crate::{engines::security::curl, engines::tools::quiet, settings};
+use crate::{engines::security::{curl, curl_secret}, engines::tools::quiet, settings};
 use anyhow::{bail, Context, Result};
 use std::{
     io::{BufRead, BufReader, Read, Write},
@@ -80,6 +80,8 @@ fn serve(listener: TcpListener, file: PathBuf, prefix: String, life: Duration) {
         };
         let _ = s.set_nonblocking(false);
         let _ = s.set_read_timeout(Some(Duration::from_secs(10)));
+        // a client that stops reading must not hold the only connection slot forever
+        let _ = s.set_write_timeout(Some(Duration::from_secs(60)));
         let mut line = String::new();
         if BufReader::new(&s).read_line(&mut line).is_err() {
             continue;
@@ -119,19 +121,21 @@ fn r2(paths: Vec<String>) -> Result<Vec<String>> {
     if [&s.r2_account, &s.r2_key, &s.r2_secret, &s.r2_bucket].iter().any(|v| v.trim().is_empty()) {
         bail!("set up Cloudflare R2 in Settings first");
     }
+    // the account and bucket end up in the upload URL: only the characters R2 allows
+    let plain = |v: &str| !v.is_empty() && v.chars().all(|c| c.is_ascii_alphanumeric() || c == '-');
+    if !plain(s.r2_account.trim()) || !plain(s.r2_bucket.trim()) {
+        bail!("the R2 account ID and bucket name may only use letters, digits and dashes");
+    }
     let mut links = Vec::new();
     for p in paths.iter().map(Path::new).filter(|p| p.is_file()) {
         let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
         // a random folder keeps links unguessable even in a public bucket
         let key = format!("{}/{}", &token()[..12], urlenc(&name));
         let url = format!("https://{}.r2.cloudflarestorage.com/{}/{key}", s.r2_account.trim(), s.r2_bucket.trim());
-        let o = quiet(&curl())
-            .args(["-sS", "--fail-with-body", "--max-time", "600", "--aws-sigv4", "aws:amz:auto:s3", "--user"])
-            .arg(format!("{}:{}", s.r2_key.trim(), s.r2_secret.trim()))
-            .arg("-T")
-            .arg(p)
-            .arg(&url)
-            .output()?;
+        let o = curl_secret(
+            quiet(&curl()).args(["-sS", "--fail-with-body", "--max-time", "600", "--aws-sigv4", "aws:amz:auto:s3", "-T"]).arg(p).arg(&url),
+            &format!("user = \"{}:{}\"", s.r2_key.trim(), s.r2_secret.trim()),
+        )?;
         if !o.status.success() {
             bail!("upload failed: {}", String::from_utf8_lossy(&o.stdout).chars().take(200).collect::<String>());
         }
@@ -171,13 +175,13 @@ pub fn ask_claude(src: &Path, task: &str, lang: &str) -> Result<PathBuf> {
     });
     let req = crate::naming::temp_file("json");
     std::fs::write(&req, serde_json::to_vec(&body)?)?;
-    let o = quiet(&curl())
-        .args(["-sS", "--max-time", "900", "https://api.anthropic.com/v1/messages", "-H", "content-type: application/json", "-H", "anthropic-version: 2023-06-01"])
-        .args(["-H", "anthropic-beta: server-side-fallback-2026-07-01", "-H"])
-        .arg(format!("x-api-key: {}", key.trim()))
-        .arg("--data-binary")
-        .arg(format!("@{}", req.display()))
-        .output();
+    let o = curl_secret(
+        quiet(&curl())
+            .args(["-sS", "--max-time", "900", "https://api.anthropic.com/v1/messages", "-H", "content-type: application/json", "-H", "anthropic-version: 2023-06-01"])
+            .args(["-H", "anthropic-beta: server-side-fallback-2026-07-01", "--data-binary"])
+            .arg(format!("@{}", req.display())),
+        &format!("header = \"x-api-key: {}\"", key.trim()),
+    );
     let _ = std::fs::remove_file(&req);
     let v: serde_json::Value = serde_json::from_slice(&o?.stdout).context("no answer from the Claude API")?;
     if let Some(e) = v["error"]["message"].as_str() {
