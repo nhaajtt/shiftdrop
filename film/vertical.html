@@ -33,13 +33,16 @@ const CAPS = [
   [0, 'Shift + drag <span>any file.</span>', 'A wheel of actions opens around it'],
   [10.6, 'Copy the text <span>out of PDFs.</span>', 'Number keys pick a wedge'],
   [17.8, 'Shrink videos <span>to 8 MB.</span>', 'Ready for Discord, Zalo, email'],
-  [26.4, 'Free. Offline. <span>For Windows.</span>', '50+ actions for images, video, PDF and more'],
+  [26.2, 'Catches files <span>that lie.</span>', 'invoice.pdf.exe is a program, not a PDF'],
+  [32.4, 'Send it <span>to your phone.</span>', 'Scan a QR code, same Wi-Fi'],
+  [39.6, 'And 50+ more <span>actions.</span>', 'All on your PC, nothing uploaded'],
+  [45.4, 'Free. Offline. <span>For Windows.</span>', 'English and Tiếng Việt'],
 ];
 const film = document.getElementById('film');
 const cap = document.getElementById('cap');
 function render(t) {
   // follow the intro's camera: whole monitor when far, a centred square of the desktop when close
-  const k = t < 20 ? 1 - ease(seg(t, 0.8, 2.6)) : ease(seg(t, 26.4, 28.6));
+  const k = t < 40 ? 1 - ease(seg(t, 0.8, 2.6)) : ease(seg(t, 45.4, 47.6));
   const s = lerp(1, 1080 / 1920, k);
   film.style.transform = `translate(${lerp(-420, 0, k)}px, ${(1080 - 1080 * s) / 2}px) scale(${s})`;
   film.contentWindow.render(t);

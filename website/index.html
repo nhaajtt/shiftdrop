@@ -3,117 +3,185 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>ShiftDrop: Shift + drag any file to convert, compress, sign and share it</title>
-<meta name="description" content="A glass wheel opens around the file you drag. Convert images and video, sign PDFs, transcribe, check suspicious files, send to your phone. Free, offline, for Windows." />
+<title>ShiftDrop: drag a file, hold Shift, done</title>
+<meta name="description" content="Drag any file and hold Shift: a wheel of actions opens around it. Convert, shrink videos to 8 MB, sign PDFs, copy text from scans, catch fake files, send to your phone. Free and offline, for Windows." />
 <meta property="og:title" content="ShiftDrop" />
-<meta property="og:description" content="Shift + drag any file. Pick what to do with it. Free and offline, for Windows." />
+<meta property="og:description" content="Drag a file, hold Shift, done. Free and offline, for Windows." />
 <meta property="og:image" content="/media/intro-poster.jpg" />
 <meta name="twitter:card" content="summary_large_image" />
+<meta name="theme-color" content="#f7f7f5" />
 <link rel="icon" href="/favicon.png" />
 <link rel="preconnect" href="https://rsms.me/" />
 <link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
 <link rel="stylesheet" href="/style.css" />
+<script src="/theme.js"></script>
 </head>
 <body>
-<div class="aurora" aria-hidden="true"><i></i><i></i><i></i></div>
-
 <header class="nav">
-  <a class="brand" href="#"><span class="mark">⇄</span> ShiftDrop</a>
+  <a class="brand" href="#top"><span class="logo">⇄</span>ShiftDrop</a>
   <nav>
-    <a href="#features" data-vi="Tính năng">Features</a>
-    <a href="#privacy" data-vi="Riêng tư">Privacy</a>
-    <a href="#install" data-vi="Cài đặt">Install</a>
-    <a href="https://github.com/nhaajtt/shiftdrop" target="_blank" rel="noopener">GitHub</a>
-    <button id="lang" class="pill" aria-label="Switch language">VI</button>
+    <a href="#film" data-vi="Xem demo">See it in action</a>
+    <a class="hide-sm" href="#faq">FAQ</a>
+    <a class="icon-link" href="https://github.com/nhaajtt/shiftdrop" target="_blank" rel="noopener" aria-label="GitHub">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .5a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.7-1.6-2.7-.3-5.5-1.3-5.5-5.9 0-1.3.5-2.4 1.2-3.2-.1-.3-.5-1.5.1-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.7 1.7.2 2.9.1 3.2.8.8 1.2 1.9 1.2 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .5Z"/></svg>
+    </a>
+    <div class="pills">
+      <button id="theme" class="pill-btn" aria-label="Toggle dark mode">◐</button>
+      <span class="seg" role="group" aria-label="Language">
+        <button data-lang="vi">VI</button><button data-lang="en">EN</button>
+      </span>
+    </div>
   </nav>
 </header>
 
-<main>
+<main id="top">
+  <!-- hero -->
   <section class="hero">
-    <p class="eyebrow" data-vi="Miễn phí · Chạy offline · Windows 10/11">Free · Works offline · Windows 10/11</p>
-    <h1 data-vi="Shift + kéo.<br /><span>Xong.</span>">Shift + drag.<br /><span>Done.</span></h1>
-    <p class="lead" data-vi="Kéo một file, giữ Shift: một vòng tròn kính hiện quanh file với đúng những việc bạn hay làm với loại file đó. Thả vào là xong, file mới nằm ngay cạnh file gốc.">
-      Drag a file, hold Shift, and a glass wheel opens around it with the things you actually do with that kind of file.
-      Drop it on one. The result lands right next to the original.
-    </p>
-    <div class="cta">
-      <a id="download" class="btn primary" href="https://github.com/nhaajtt/shiftdrop/releases/latest">
-        <span data-vi="Tải cho Windows">Download for Windows</span>
-        <small id="version">x64 installer</small>
-      </a>
-      <a class="btn" href="https://github.com/nhaajtt/shiftdrop" target="_blank" rel="noopener" data-vi="Xem mã nguồn">View source</a>
+    <div class="hero-copy reveal">
+      <h1 data-vi="Kéo file, giữ Shift.<br /><span class='grad'>Xong như phép thuật.</span>">Drag a file, hold Shift.<br /><span class="grad">Done like magic.</span></h1>
+      <p class="lead" data-vi="Đổi định dạng, nén video, ký PDF, lấy chữ từ ảnh, gửi sang điện thoại, nhanh hơn cả lúc bạn đi tìm cái web convert đầy quảng cáo kia.">
+        Convert, shrink, sign, OCR and share any file, faster than you can find that one ad-stuffed converter website again.
+      </p>
+      <div class="os seg big" role="group" aria-label="Platform">
+        <button class="on">Windows 10/11</button><button disabled data-vi="macOS (sắp có)">macOS (soon)</button>
+      </div>
+      <div class="cta">
+        <a id="download" class="btn primary magnetic" href="https://github.com/nhaajtt/shiftdrop/releases/latest">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0-5-5m5 5 5-5M4 19h16" /></svg>
+          <span data-vi="Tải miễn phí">Download free</span>
+        </a>
+        <a class="btn ghost" href="#film" data-vi="Xem 50 giây">Watch 50 seconds</a>
+      </div>
+      <p class="fine"><span id="version">x64 installer</span> · <span data-vi="không cần quyền admin">no admin needed</span><br />
+        <span data-vi="Mẹo: bắt đầu kéo trước, rồi mới nhấn Shift.">Tip: start dragging first, then press Shift.</span></p>
+      <div class="plays">
+        <span data-vi="Ăn được hết">Eats</span>
+        <i>JPG</i><i>HEIC</i><i>PNG</i><i>MP4</i><i>MP3</i><i>PDF</i><i>DOCX</i><i>JSON</i><i>EXE</i><i>ZIP</i>
+      </div>
     </div>
-    <div class="film glass">
-      <video id="film" autoplay muted loop playsinline preload="metadata" poster="/media/intro-poster.jpg">
+
+    <div class="hero-media reveal">
+      <div class="frame tilt">
+        <video id="heroVideo" autoplay muted loop playsinline preload="metadata" poster="/media/intro-poster.jpg">
+          <source src="/media/intro.webm" type="video/webm" />
+          <source src="/media/intro.mp4" type="video/mp4" />
+        </video>
+        <span class="tag t1" data-vi="Không tải lên">No uploads</span>
+        <span class="tag t2 accent" data-vi="Miễn phí">Free</span>
+        <span class="tag t3" data-vi="50+ thao tác">50+ actions</span>
+        <span class="file">your-files.anything <b>⇄</b></span>
+      </div>
+    </div>
+  </section>
+
+  <!-- stats -->
+  <section class="stats reveal">
+    <div><b class="count" data-to="50" data-suffix="+">0</b><span data-vi="thao tác">actions</span></div>
+    <div><b class="count" data-to="0" data-suffix=" MB">0</b><span data-vi="tải lên server">uploaded anywhere</span></div>
+    <div><b>$0</b><span data-vi="mãi mãi">forever</span></div>
+  </section>
+
+  <!-- steps -->
+  <section class="steps">
+    <h2 class="reveal" data-vi="Ba bước, khỏi cần<br />đọc hướng dẫn">Three steps,<br />zero tutorials</h2>
+    <div class="track">
+      <div class="line"><i></i></div>
+      <article class="step reveal">
+        <span class="num">01</span><span class="ico">↗</span>
+        <h3 data-vi="Bắt đầu kéo">Start dragging</h3>
+        <p data-vi="Một file bất kỳ trong File Explorer hoặc trên desktop. Như mọi ngày.">Any file in File Explorer or on the desktop. Like you always do.</p>
+      </article>
+      <article class="step reveal">
+        <span class="num">02</span><span class="ico">⇧</span>
+        <h3 data-vi="Giữ Shift">Hold Shift</h3>
+        <p data-vi="Vòng tròn kính hiện ra, chỉ với những việc hợp với file đó. Phím 1–8 chọn nhanh.">A glass wheel appears with only what fits that file. Keys 1–8 if you're in a hurry.</p>
+      </article>
+      <article class="step reveal">
+        <span class="num">03</span><span class="ico">✓</span>
+        <h3 data-vi="Thả. Xong.">Drop. Done.</h3>
+        <p data-vi="File mới nằm ngay cạnh file gốc. Không thích? Bấm hoàn tác.">The result lands right next to the original. Changed your mind? Undo.</p>
+      </article>
+    </div>
+  </section>
+
+  <!-- features -->
+  <section class="features">
+    <h2 class="reveal" data-vi="Đủ mọi thứ bạn cần,<br />thêm chút hỗn loạn">Everything you need,<br />plus a little chaos</h2>
+    <div class="bento">
+      <article class="card wide glow reveal"><span class="ico">⇄</span><h3 data-vi="Đổi mọi định dạng">Converts basically anything</h3>
+        <p data-vi="Ảnh HEIC từ iPhone, RAW máy ảnh, WebP, AVIF, video, nhạc, PDF, Word, JSON, YAML… Chọn đích, xong.">iPhone HEIC, camera RAW, WebP, AVIF, video, audio, PDF, Word, JSON, YAML… pick a target, done.</p></article>
+      <article class="card reveal"><span class="ico">⊡</span><h3 data-vi="Video vừa 8 MB">Videos that fit 8 MB</h3>
+        <p data-vi="Gửi Zalo, Discord, email không còn bị chê nặng.">Discord, Zalo and email stop complaining.</p></article>
+      <article class="card reveal"><span class="ico">⛨</span><h3 data-vi="Bắt file giả đuôi">Catches files that lie</h3>
+        <p data-vi="“hoadon.pdf.exe” là chương trình, không phải PDF. Vòng tròn đỏ lên báo bạn.">“invoice.pdf.exe” is a program, not a PDF. The wheel turns red.</p></article>
+      <article class="card reveal"><span class="ico">✍</span><h3 data-vi="Ký PDF">Sign PDFs</h3>
+        <p data-vi="Vẽ hoặc gõ chữ ký, đặt vào trang, xong. Không cần in ra.">Draw or type, place it, done. No printer involved.</p></article>
+      <article class="card glow reveal"><span class="ico">T</span><h3 data-vi="Lấy chữ từ ảnh">Copy text from pictures</h3>
+        <p data-vi="Ảnh chụp màn hình, bản scan, tiếng Việt cũng được. Chạy offline.">Screenshots, scans, Vietnamese too. Offline.</p></article>
+      <article class="card reveal"><span class="ico">▯</span><h3 data-vi="Gửi sang điện thoại">Straight to your phone</h3>
+        <p data-vi="Quét QR, cùng Wi-Fi, link tự hết hạn sau 10 phút.">Scan a QR on the same Wi-Fi. The link self-destructs in 10 minutes.</p></article>
+      <article class="card wide reveal"><span class="ico">⚡</span><h3 data-vi="Càng dùng càng hợp với bạn">Gets used to you</h3>
+        <p data-vi="Việc hay dùng tự lên vòng tròn. Công thức nhiều bước, thư mục tự động, kệ tạm, xem nhanh bằng Ctrl+Space, hoàn tác.">What you use climbs onto the wheel. Recipes, watched folders, a shelf, Ctrl+Space quick look, undo.</p></article>
+      <article class="card reveal"><span class="ico">◐</span><h3 data-vi="Xoá nền, phụ đề">Background removal, subtitles</h3>
+        <p data-vi="AI chạy ngay trên máy. Không gửi gì đi đâu.">AI that runs on your PC. Nothing leaves it.</p></article>
+      <article class="card wide glow reveal"><span class="ico">🔒</span><h3 data-vi="Riêng tư thật sự">Actually private</h3>
+        <p data-vi="Không tài khoản, không theo dõi, không tải file lên. Mã nguồn mở để bạn tự kiểm tra.">No account, no tracking, no uploads. Open source, so you can check.</p></article>
+    </div>
+  </section>
+
+  <!-- film -->
+  <section id="film" class="film-sec reveal">
+    <h2 data-vi="50 giây, xem hết mọi thứ">Everything in 50 seconds</h2>
+    <div class="frame big">
+      <video controls playsinline preload="none" poster="/media/intro-poster.jpg">
         <source src="/media/intro.webm" type="video/webm" />
         <source src="/media/intro.mp4" type="video/mp4" />
       </video>
     </div>
   </section>
 
-  <section class="tour">
-    <h2 data-vi="Xem nhanh mọi thứ trong 40 giây">The whole tour in 40 seconds</h2>
-    <div class="film glass"><video controls muted playsinline preload="none" poster="/media/poster.jpg"><source src="/media/demo.webm" type="video/webm" /><source src="/media/demo.mp4" type="video/mp4" /></video></div>
+  <!-- faq -->
+  <section id="faq" class="faq">
+    <h2 class="reveal" data-vi="FAQ (không nghiêm túc lắm)">FAQ (not very serious)</h2>
+    <details class="reveal" open><summary data-vi="ShiftDrop có miễn phí không?">Is ShiftDrop free?</summary>
+      <p data-vi="Có, miễn phí 100% và mã nguồn mở (MIT). Không có bản Pro bí mật nào cả.">Yes, 100% free and open source (MIT). There is no secret Pro version.</p></details>
+    <details class="reveal"><summary data-vi="File của tôi có bị tải lên đâu không?">Do my files get uploaded?</summary>
+      <p data-vi="Không. Mọi thứ chạy trên máy bạn. Chỉ những việc ghi rõ như “Gửi sang điện thoại” hay “Dịch” mới dùng mạng, và chỉ khi bạn chọn.">No. Everything runs on your PC. Only actions that say so, like “To phone” or “Translate”, use the network, and only when you pick them.</p></details>
+    <details class="reveal"><summary data-vi="Sao Windows cảnh báo khi cài?">Why does Windows warn me?</summary>
+      <p data-vi="App mới chưa có chứng chỉ ký code trả phí nên SmartScreen chưa quen. Chọn More info → Run anyway. Mã nguồn công khai trên GitHub.">It is a new app without a paid code-signing certificate, so SmartScreen hasn't met it yet. Choose More info → Run anyway. The source is public on GitHub.</p></details>
+    <details class="reveal"><summary data-vi="Video và nhạc không chạy?">Video and audio don't work?</summary>
+      <p data-vi="Chúng cần tiện ích FFmpeg miễn phí: Cài đặt › Tiện ích thêm › Tải về. Một lần là xong.">They need the free FFmpeg add-on: Settings › Add-ons › Download. One time.</p></details>
+    <details class="reveal"><summary data-vi="Có bản cho Mac không?">Is there a Mac version?</summary>
+      <p data-vi="Đang lên kế hoạch. Hiện tại là Windows 10 và 11.">Planned. For now it is Windows 10 and 11.</p></details>
+    <details class="reveal"><summary data-vi="App ở đâu sau khi cài?">Where is the app after installing?</summary>
+      <p data-vi="Nó sống lặng lẽ dưới khay hệ thống (icon ⇄ cạnh đồng hồ). Không cần mở cửa sổ nào, cứ kéo file và giữ Shift.">It lives quietly in the system tray (the ⇄ icon by the clock). No window to keep open; just drag a file and hold Shift.</p></details>
   </section>
 
-  <section class="steps">
-    <div class="step glass"><b>1</b><h3 data-vi="Bắt đầu kéo">Start dragging</h3><p data-vi="Một file bất kỳ, trong File Explorer hoặc trên desktop.">Any file, in File Explorer or on the desktop.</p></div>
-    <div class="step glass"><b>2</b><h3 data-vi="Giữ Shift">Hold Shift</h3><p data-vi="Vòng tròn hiện ra với thao tác hợp với file đó. Phím 1–8 chọn nhanh.">The wheel shows what fits that file. Keys 1–8 pick fast.</p></div>
-    <div class="step glass"><b>3</b><h3 data-vi="Thả">Drop</h3><p data-vi="Có thể hoàn tác, hoặc kéo kết quả thẳng vào Zalo, Messenger, email.">Undo it, or drag the result straight into a chat or email.</p></div>
+  <!-- cta -->
+  <section class="cta-card reveal">
+    <h2 data-vi="File của bạn đang chờ">Your files are waiting</h2>
+    <p data-vi="8 MB, một phút cài đặt, không đăng ký, không drama.">8 MB, a minute to install, no signup, no drama.</p>
+    <a class="btn primary magnetic dl" href="https://github.com/nhaajtt/shiftdrop/releases/latest">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0-5-5m5 5 5-5M4 19h16" /></svg>
+      <span data-vi="Tải cho Windows">Download for Windows</span>
+    </a>
   </section>
 
-  <section id="features">
-    <h2 data-vi="Mỗi loại file, một vòng tròn riêng">Every kind of file gets its own wheel</h2>
-    <div class="grid">
-      <article class="card glass"><i>▣</i><h3 data-vi="Ảnh">Images</h3><p data-vi="Chuyển định dạng (cả HEIC, RAW), nén, cắt, thêm nền, chép chữ (OCR), đọc QR, icon và favicon, watermark, sang SVG, xoá nền, làm mờ mặt, phóng to.">Convert (HEIC and RAW too), compress, crop, add a background, copy text (OCR), read QR, icons and favicons, watermark, trace to SVG, remove background, blur faces, upscale.</p></article>
-      <article class="card glass"><i>▶</i><h3>Video</h3><p data-vi="Nén vừa 8/25/50 MB, chuyển định dạng, cắt, gộp, tách tiếng, đổi tốc độ, lật xoay, ảnh bìa, lọc ồn, phụ đề tự động từ giọng nói.">Fit to 8/25/50 MB, convert, trim, merge, extract audio, speed, flip, thumbnails, clean up sound, subtitles from speech.</p></article>
-      <article class="card glass"><i>▤</i><h3>PDF</h3><p data-vi="Sang ảnh, nén, tách, gộp, sắp xếp và xoay trang, ký tên, đánh số trang, watermark, lấy chữ (kể cả bản scan), đặt mật khẩu.">To images, compress, split, merge, rearrange pages, sign, page numbers, watermark, text (scans too), passwords.</p></article>
-      <article class="card glass"><i>W</i><h3 data-vi="Tài liệu và dữ liệu">Documents and data</h3><p data-vi="Word, Excel, PowerPoint sang PDF; Markdown sang Word; JSON, YAML, TOML, XML, CSV; so sánh hai file; dịch và tóm tắt.">Word, Excel, PowerPoint to PDF; Markdown to Word; JSON, YAML, TOML, XML, CSV; compare two files; translate and summarise.</p></article>
-      <article class="card glass"><i>⛨</i><h3 data-vi="Bảo mật">Security</h3><p data-vi="Phát hiện file giả đuôi như invoice.pdf.exe, kiểm tra chữ ký số, hash, tra VirusTotal bằng hash, mã hoá, xoá vĩnh viễn, xem chương trình đang giữ file.">Spots files like invoice.pdf.exe, checks signatures, hashes, VirusTotal by hash, encrypts, shreds, shows what is locking a file.</p></article>
-      <article class="card glass"><i>⌬</i><h3 data-vi="Lập trình và dịch ngược">Developers</h3><p data-vi="Mở .exe trong x64dbg, IDA, Ghidra; báo cáo PE với imphash và entropy; capa, FLOSS, UPX; chép đường dẫn kiểu WSL hoặc Markdown.">Open programs in x64dbg, IDA, Ghidra; PE report with imphash and entropy; capa, FLOSS, UPX; copy paths as WSL or Markdown.</p></article>
-    </div>
-  </section>
-
-  <section class="power">
-    <h2 data-vi="Càng dùng càng hợp với bạn">Gets better the more you use it</h2>
-    <div class="grid small">
-      <div class="tile glass"><h3 data-vi="Menu tự học">Learns your habits</h3><p data-vi="Việc bạn hay làm tự lên vòng tròn. Phần còn lại nằm trong “Thêm”, tìm là thấy.">What you use climbs onto the wheel. The rest is one search away under More.</p></div>
-      <div class="tile glass"><h3 data-vi="Công thức">Recipes</h3><p data-vi="Nối nhiều bước thành một lần thả: thu nhỏ, sang JPG, xoá metadata.">Chain steps into one drop: resize, to JPG, remove metadata.</p></div>
-      <div class="tile glass"><h3 data-vi="Thư mục tự động">Watched folders</h3><p data-vi="File mới trong Downloads hay Screenshots được xử lý tự động.">New files in Downloads or Screenshots get processed on their own.</p></div>
-      <div class="tile glass"><h3 data-vi="Kệ tạm">Shelf</h3><p data-vi="Gom file từ nhiều thư mục, kéo ra cùng lúc khi cần.">Collect files from different folders, drag them out together.</p></div>
-      <div class="tile glass"><h3 data-vi="Xem nhanh">Quick look</h3><p data-vi="Ctrl + Space trong Explorer để xem ảnh, video, PDF, văn bản.">Ctrl + Space in Explorer previews images, video, PDFs, text.</p></div>
-      <div class="tile glass"><h3 data-vi="Sang điện thoại">To your phone</h3><p data-vi="Quét QR là tải về, qua Wi-Fi nhà, link tự hết hạn.">Scan a QR code to download over your Wi-Fi. The link expires.</p></div>
-    </div>
-  </section>
-
-  <section id="privacy" class="privacy glass">
+  <section class="support reveal">
     <div>
-      <h2 data-vi="Riêng tư từ đầu">Private by design</h2>
-      <p data-vi="Mọi thao tác chạy trên máy bạn. Không tài khoản, không theo dõi. Chỉ những việc bạn chọn mới cần Internet, và luôn ghi rõ gửi gì, đi đâu.">
-        Everything runs on your PC. No account, no tracking. Only the actions you choose reach the internet, and each one says exactly what it sends.</p>
+      <h3 data-vi="Thấy hay?">Enjoying this?</h3>
+      <p data-vi="Tặng một ngôi sao trên GitHub để mình có động lực làm thêm trò hay. Hoàn toàn tuỳ bạn.">Leave a star on GitHub so I stay motivated to build weirder stuff. Totally optional.</p>
     </div>
-    <ul>
-      <li><b>VirusTotal</b><span data-vi="chỉ gửi mã SHA-256, không gửi file">sends only the SHA-256, never the file</span></li>
-      <li><b data-vi="Dịch / Tóm tắt">Translate / Summarize</b><span data-vi="dùng API key Claude của bạn">uses your own Claude API key</span></li>
-      <li><b data-vi="Sang điện thoại">To phone</b><span data-vi="chỉ trong mạng nhà, 10 phút">your local network only, 10 minutes</span></li>
-      <li><b data-vi="Tiện ích thêm">Add-ons</b><span data-vi="tải từ bản phát hành chính thức khi bạn bấm">downloaded from official releases when you ask</span></li>
-      <li><b>API keys</b><span data-vi="mã hoá bằng DPAPI của Windows">encrypted with Windows DPAPI</span></li>
-    </ul>
-  </section>
-
-  <section id="install" class="install">
-    <h2 data-vi="Cài đặt trong một phút">Install in a minute</h2>
-    <ol>
-      <li data-vi="Tải bản cài đặt ở trên và chạy. Không cần quyền admin.">Download the installer above and run it. No admin rights needed.</li>
-      <li data-vi="Nếu Windows báo “Windows protected your PC”, chọn <b>More info → Run anyway</b>. App mới chưa có chữ ký thương mại nên Windows chưa quen.">If Windows says “Windows protected your PC”, choose <b>More info → Run anyway</b>. It is a new app without a paid code-signing certificate yet.</li>
-      <li data-vi="ShiftDrop nằm ở khay hệ thống. Bắt đầu kéo một file rồi giữ Shift.">ShiftDrop lives in the system tray. Start dragging a file, then hold Shift.</li>
-    </ol>
+    <a class="btn star" href="https://github.com/nhaajtt/shiftdrop" target="_blank" rel="noopener">★ <span data-vi="Thả sao">Star on GitHub</span></a>
   </section>
 </main>
 
 <footer>
-  <span>© 2026 Nhaajt · <a href="https://github.com/nhaajtt/shiftdrop/blob/master/LICENSE">MIT</a></span>
-  <span><a href="https://github.com/nhaajtt/shiftdrop">GitHub</a> · <a href="https://github.com/nhaajtt/shiftdrop/releases">Releases</a> · <a href="https://github.com/nhaajtt/shiftdrop/issues" data-vi="Báo lỗi">Report a bug</a></span>
+  <div class="foot-top">
+    <a class="brand" href="#top"><span class="logo">⇄</span><span>ShiftDrop<small data-vi="Chỉ đụng vào file bạn kéo, hứa đấy.">Only touches the files you drag, promise.</small></span></a>
+    <a class="icon-link" href="https://github.com/nhaajtt/shiftdrop" target="_blank" rel="noopener" aria-label="GitHub"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .5a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.7-1.6-2.7-.3-5.5-1.3-5.5-5.9 0-1.3.5-2.4 1.2-3.2-.1-.3-.5-1.5.1-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.7 1.7.2 2.9.1 3.2.8.8 1.2 1.9 1.2 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .5Z"/></svg></a>
+  </div>
+  <p class="made"><span data-vi="Làm ra vì chán bởi">Built out of boredom by</span> <b>Nhaajt</b> · <a href="https://github.com/nhaajtt/shiftdrop">GitHub</a> · <a href="https://github.com/nhaajtt/shiftdrop/releases" data-vi="Các phiên bản">Releases</a> · <a href="https://github.com/nhaajtt/shiftdrop/blob/master/LICENSE">MIT</a></p>
 </footer>
 
 <script src="/main.js" defer></script>
