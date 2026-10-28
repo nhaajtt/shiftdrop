@@ -52,6 +52,13 @@
         </a>
         <a class="btn ghost" href="#film" data-vi="Xem 50 giây">Watch 50 seconds</a>
       </div>
+      <div class="on-phone">
+        <p data-vi="ShiftDrop là app cho máy tính Windows. Gửi link sang máy tính để cài nhé:">ShiftDrop is a Windows PC app. Send the link to your computer:</p>
+        <div class="row">
+          <button id="shareLink" class="btn primary"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12v7h16v-7M12 3v12m0-12-4 4m4-4 4 4" /></svg><span data-vi="Gửi link">Send link</span></button>
+          <button id="copyLink" class="btn" data-vi="Chép link">Copy link</button>
+        </div>
+      </div>
       <p class="fine"><span id="version">x64 installer</span> · <span data-vi="không cần quyền admin">no admin needed</span><br />
         <span data-vi="Mẹo: bắt đầu kéo trước, rồi mới nhấn Shift.">Tip: start dragging first, then press Shift.</span></p>
       <div class="plays">
@@ -161,7 +168,8 @@
   <section class="cta-card reveal">
     <h2 data-vi="File của bạn đang chờ">Your files are waiting</h2>
     <p data-vi="8 MB, một phút cài đặt, không đăng ký, không drama.">8 MB, a minute to install, no signup, no drama.</p>
-    <a class="btn primary magnetic dl" href="https://github.com/nhaajtt/shiftdrop/releases/latest">
+    <button class="btn primary share-again on-phone-inline" data-vi="Gửi link sang máy tính">Send the link to my PC</button>
+    <a class="btn primary magnetic dl desk-only" href="https://github.com/nhaajtt/shiftdrop/releases/latest">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0-5-5m5 5 5-5M4 19h16" /></svg>
       <span data-vi="Tải cho Windows">Download for Windows</span>
     </a>

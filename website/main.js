@@ -99,6 +99,39 @@ if (!reduce) {
   });
 }
 
+// --- phones: send the download page to a PC; no autoplay on mobile data
+const phone = matchMedia('(max-width: 880px)').matches;
+const page = 'https://shiftdrop.nhaajt.com';
+async function shareLink(btn) {
+  const vi = document.documentElement.lang === 'vi';
+  const text = vi ? 'ShiftDrop: kéo file, giữ Shift. Cài trên máy tính Windows:' : 'ShiftDrop: drag a file, hold Shift. Install it on a Windows PC:';
+  try {
+    if (navigator.share) return await navigator.share({ title: 'ShiftDrop', text, url: page });
+  } catch {
+    return;
+  }
+  copyLink(btn);
+}
+async function copyLink(btn) {
+  const vi = document.documentElement.lang === 'vi';
+  try {
+    await navigator.clipboard.writeText(page);
+    const old = btn.textContent;
+    btn.textContent = vi ? 'Đã chép ✓' : 'Copied ✓';
+    setTimeout(() => (btn.textContent = old), 1600);
+  } catch {}
+}
+document.getElementById('shareLink')?.addEventListener('click', (e) => shareLink(e.currentTarget));
+document.getElementById('copyLink')?.addEventListener('click', (e) => copyLink(e.currentTarget));
+document.querySelectorAll('.share-again').forEach((b) => b.addEventListener('click', () => shareLink(b)));
+const heroVideo = document.getElementById('heroVideo');
+if (phone && heroVideo) {
+  heroVideo.autoplay = false;
+  heroVideo.preload = 'none';
+  heroVideo.pause();
+  heroVideo.controls = true;
+}
+
 // --- videos pause when off screen
 document.querySelectorAll('video').forEach((v) =>
   new IntersectionObserver(([e]) => {
