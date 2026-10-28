@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en" data-accent="gold">
+  <head>
+    <meta charset="UTF-8" />
+    <title>ShiftDrop</title>
+    <link rel="stylesheet" href="./editor.css" />
+    <script type="module" src="./editor.js"></script>
+  </head>
+  <body>
+    <header id="top">
+      <span class="wordmark"><b>▣</b> ShiftDrop</span>
+      <span id="tool" class="tag">[EDIT]</span>
+      <span id="file"></span>
+      <span class="hints label"><span class="kbd">↵</span> save <span class="kbd">Esc</span> close</span>
+    </header>
+    <main>
+      <section id="stage"></section>
+      <aside id="panel">
+        <div id="controls"></div>
+        <footer>
+          <p id="error" hidden></p>
+          <button id="cancel" class="btn btn-ghost">Cancel</button>
+          <button id="save" class="btn btn-accent">Save ↵</button>
+        </footer>
+      </aside>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,57 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "ShiftDrop",
+  "version": "1.0.0",
+  "identifier": "app.shiftdrop.desktop",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' asset: http://asset.localhost blob: data:; media-src 'self' asset: http://asset.localhost; connect-src ipc: http://ipc.localhost",
+      "assetProtocol": {
+        "enable": true,
+        "scope": []
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "nsis"
+    ],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.ico",
+      "icons/icon.icns"
+    ],
+    "resources": [
+      "resources/bin/*"
+    ],
+    "createUpdaterArtifacts": true,
+    "publisher": "Nhaajt",
+    "shortDescription": "Shift + drag any file to convert, compress, edit and share it",
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEEzMEZFMzU4RTIyMkJFMzEKUldReHZpTGlXT01Qb3lOWi9DcTdoZG1sQTVzTkkvb28wYjVBMnp4WHVYZlFmZUk2SkR0NVJNTHkK",
+      "endpoints": [
+        "https://github.com/nhaajtt/shiftdrop/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  }
+}

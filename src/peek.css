@@ -1,0 +1,90 @@
+@import './hub.css';
+
+body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+}
+
+header b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 50%;
+}
+
+.spacer {
+  flex: 1;
+}
+
+#view {
+  flex: 1;
+  overflow: auto;
+  display: grid;
+  place-items: center;
+  padding: 14px;
+  min-height: 0;
+}
+
+#view img,
+#view video {
+  max-width: 100%;
+  max-height: calc(100vh - 110px);
+  object-fit: contain;
+  border-radius: 8px;
+}
+
+#view audio {
+  width: min(560px, 90%);
+}
+
+#view pre {
+  place-self: stretch;
+  margin: 0;
+  font: 12.5px/1.55 'JetBrains Mono Variable', ui-monospace, monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.pages {
+  place-self: stretch;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.pages img {
+  max-height: none !important;
+  width: min(760px, 100%);
+  background: #fff;
+  box-shadow: 0 4px 18px rgb(0 0 0 / 0.18);
+}
+
+.info {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px 18px;
+  min-width: 360px;
+}
+
+.info dt {
+  color: var(--muted);
+}
+
+.info dd {
+  margin: 0;
+}
+
+.warn {
+  color: var(--danger);
+  font-weight: 600;
+}

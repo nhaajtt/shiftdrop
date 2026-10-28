@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en" data-accent="gold">
+  <head>
+    <meta charset="UTF-8" />
+    <title>ShiftDrop</title>
+    <link rel="stylesheet" href="./toast.css" />
+    <script type="module" src="./toast.js"></script>
+  </head>
+  <body>
+    <section id="card" class="shadow-sheet" role="status" aria-live="polite">
+      <header>
+        <span id="state" class="tag">Working</span>
+        <span id="title">Working</span>
+        <button id="close" class="icon" title="Close" aria-label="Close">✕</button>
+      </header>
+      <div class="bar"><i id="fill"></i></div>
+      <footer>
+        <span id="count" class="label">0 of 1 saved</span>
+        <span id="queue" class="label"></span>
+        <button id="drag" class="btn btn-ghost" hidden title="Drag the result into another app">⠿ Drag</button>
+        <button id="undo" class="btn btn-ghost" hidden title="Move the new files to the Recycle Bin">Undo</button>
+        <button id="show" class="btn btn-ghost" hidden>Show ›</button>
+      </footer>
+      <p id="error" hidden></p>
+    </section>
+  </body>
+</html>

@@ -1,0 +1,248 @@
+@import './base.css';
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: transparent;
+  user-select: none;
+}
+
+/* Liquid glass: a lightly blurred copy of the screen behind the menu (taken just before it
+   opens), clipped to a disc, with a specular rim. Text flips light/dark with the backdrop. */
+:root {
+  --ink: rgb(10 14 32 / 0.96);
+  --ink-soft: rgb(10 14 32 / 0.62);
+  --line-glass: rgb(20 30 70 / 0.16);
+  --seg: rgb(255 255 255 / 0.08);
+  --blue: #4f8bff;
+  --violet: #8b5cf6;
+  --hot: rgb(92 100 246 / 0.88);
+  --hot-line: rgb(255 255 255 / 0.7);
+}
+
+body.on-dark {
+  --ink: rgb(255 255 255 / 0.96);
+  --ink-soft: rgb(255 255 255 / 0.68);
+  --line-glass: rgb(255 255 255 / 0.22);
+  --seg: rgb(255 255 255 / 0.03);
+  --hot: rgb(110 100 250 / 0.78);
+}
+
+#glass {
+  --r: 150px;
+  position: fixed;
+  left: calc(50vw - var(--r));
+  top: calc(50vh - var(--r));
+  width: calc(2 * var(--r));
+  height: calc(2 * var(--r));
+  border-radius: 50%;
+  overflow: hidden;
+  opacity: 0;
+  transform: scale(0.9);
+  transition:
+    opacity 140ms ease-out,
+    transform 220ms cubic-bezier(0.34, 1.4, 0.64, 1),
+    left 180ms cubic-bezier(0.34, 1.3, 0.64, 1),
+    top 180ms cubic-bezier(0.34, 1.3, 0.64, 1),
+    width 180ms cubic-bezier(0.34, 1.3, 0.64, 1),
+    height 180ms cubic-bezier(0.34, 1.3, 0.64, 1);
+  box-shadow:
+    0 18px 50px rgb(0 0 0 / 0.28),
+    0 2px 8px rgb(0 0 0 / 0.14),
+    0 0 0 0.5px rgb(0 0 0 / 0.12),
+    inset 0 1px 0 rgb(255 255 255 / 0.55),
+    inset 0 0 28px rgb(255 255 255 / 0.16);
+}
+
+#glass.open {
+  opacity: 1;
+  transform: none;
+}
+
+#glass .behind {
+  position: absolute;
+  left: calc(var(--r) - 50vw);
+  top: calc(var(--r) - 50vh);
+  width: 100vw;
+  height: 100vh;
+  background-size: 100% 100%;
+  filter: blur(7px) saturate(1.9) brightness(1.06);
+  transition:
+    left 180ms cubic-bezier(0.34, 1.3, 0.64, 1),
+    top 180ms cubic-bezier(0.34, 1.3, 0.64, 1);
+}
+
+/* barely-there tint */
+#glass::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: rgb(246 247 252 / 0.5);
+}
+
+body.on-dark #glass::after {
+  background: rgb(16 18 30 / 0.38);
+}
+
+/* specular rim: bright top-left, faint bottom-right */
+#glass::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: 50%;
+  padding: 1.5px;
+  background: linear-gradient(140deg, rgb(255 255 255 / 0.95), rgb(255 255 255 / 0.2) 24%, transparent 46%, transparent 62%, rgb(255 255 255 / 0.3) 84%, rgb(255 255 255 / 0.75));
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+}
+
+#wheel {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  display: block;
+  opacity: 0;
+  transform: scale(0.92);
+  transition:
+    opacity 140ms ease-out,
+    transform 240ms cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+
+#wheel.open {
+  opacity: 1;
+  transform: none;
+}
+
+.plate,
+.edge {
+  fill: none;
+  stroke: none;
+}
+
+.seg {
+  fill: var(--seg);
+  stroke: var(--line-glass);
+  stroke-width: 0.75;
+  transition: fill 110ms ease-out, stroke 110ms ease-out;
+}
+
+.seg.hot {
+  fill: var(--hot);
+  stroke: var(--hot-line);
+  stroke-width: 1.25;
+}
+
+.seg.parent {
+  fill: rgb(92 100 246 / 0.22);
+}
+
+.core {
+  fill: rgb(255 255 255 / 0.55);
+  stroke: rgb(20 30 70 / 0.12);
+  stroke-width: 1;
+  transition: fill 110ms ease-out;
+}
+
+body.on-dark .core {
+  fill: rgb(255 255 255 / 0.1);
+  stroke: rgb(255 255 255 / 0.4);
+}
+
+.core.hot {
+  fill: url(#lg);
+  stroke: rgb(255 255 255 / 0.8);
+}
+
+text {
+  font-family: 'Inter Variable', system-ui, sans-serif;
+  pointer-events: none;
+  fill: var(--ink);
+}
+
+body.on-dark text {
+  paint-order: stroke;
+  stroke: rgb(0 0 0 / 0.22);
+  stroke-width: 2px;
+}
+
+.glyph {
+  font-size: 17px;
+  fill: var(--ink-soft);
+}
+
+.name {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.hot-label .glyph,
+.hot-label .name,
+.hot-label .sub-name {
+  fill: #fff;
+}
+
+.sub-name {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.core-label {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.core-hint {
+  font-size: 9.5px;
+  font-weight: 500;
+  fill: var(--ink-soft);
+}
+
+.core.hot ~ .core-text .core-label,
+.core.hot ~ .core-text .core-hint {
+  fill: #fff;
+}
+
+.ring2 {
+  opacity: 0;
+  transition: opacity 120ms ease-out;
+}
+
+.ring2.show {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #glass,
+  #glass .behind,
+  #wheel {
+    transition: opacity 100ms linear;
+  }
+}
+
+/* a file pretends to be something it isn't: red rim and hint */
+body.warn #glass {
+  box-shadow:
+    0 0 0 2px rgb(240 60 80 / 0.85),
+    0 18px 50px rgb(0 0 0 / 0.28);
+}
+
+.core-hint.warn {
+  fill: #e5354f;
+  font-weight: 700;
+}
+
+/* number key shortcut for each wedge */
+.num {
+  font-family: 'JetBrains Mono Variable', ui-monospace, monospace;
+  font-size: 8.5px;
+  fill: var(--ink-soft);
+  opacity: 0.7;
+}

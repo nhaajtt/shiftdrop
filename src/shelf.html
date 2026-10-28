@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>ShiftDrop shelf</title>
+    <link rel="stylesheet" href="./shelf.css" />
+    <script type="module" src="./shelf.js"></script>
+  </head>
+  <body>
+    <div class="aurora" aria-hidden="true"><i></i><i></i><i></i></div>
+    <header data-tauri-drag-region>
+      <span class="mark" data-tauri-drag-region>⇄</span>
+      <b data-tauri-drag-region>Shelf</b>
+      <span id="count" class="muted" data-tauri-drag-region></span>
+      <button id="close" class="icon" title="Hide (files stay)">✕</button>
+    </header>
+    <ul id="list"></ul>
+    <p id="empty">Drop files here to keep them for later, from any folder. Drag them out when you need them.</p>
+    <footer>
+      <button id="all" class="btn primary" title="Drag every file out at once">⠿ Drag all</button>
+      <button id="act" class="btn">Actions</button>
+      <button id="clear" class="btn">Clear</button>
+    </footer>
+  </body>
+</html>

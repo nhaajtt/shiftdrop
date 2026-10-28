@@ -1,0 +1,120 @@
+@import './tokens.css';
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  border-color: var(--line);
+}
+
+html,
+body {
+  margin: 0;
+  color: var(--text);
+  font-family: 'Inter Variable', system-ui, sans-serif;
+  font-size: 14px;
+  font-feature-settings: 'cv11', 'ss01';
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.mono {
+  font-family: 'JetBrains Mono Variable', ui-monospace, monospace;
+}
+
+.label {
+  font-family: 'JetBrains Mono Variable', ui-monospace, monospace;
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.tag {
+  font-family: 'JetBrains Mono Variable', ui-monospace, monospace;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+  font-family: 'JetBrains Mono Variable', ui-monospace, monospace;
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: background-color 150ms, border-color 150ms, color 150ms;
+}
+
+.btn:hover {
+  background: var(--surface-2);
+}
+
+.btn-accent {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+.btn-accent:hover {
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+}
+
+.btn-ghost {
+  background: transparent;
+  border-color: transparent;
+}
+
+.btn[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--tint);
+  color: var(--accent);
+}
+
+.kbd {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  font-family: 'JetBrains Mono Variable', ui-monospace, monospace;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.shadow-sheet {
+  box-shadow: 0 12px 48px -12px rgb(0 0 0 / 0.28), 0 2px 8px -2px rgb(0 0 0 / 0.08);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 1ms !important;
+    animation-duration: 1ms !important;
+  }
+}

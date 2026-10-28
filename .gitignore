@@ -1,0 +1,13 @@
+node_modules/
+dist/
+src-tauri/target/
+src-tauri/gen/
+src-tauri/resources/bin/*
+!src-tauri/resources/bin/.gitkeep
+
+# reference material and build output kept out of the repo
+*.mp4
+!docs/media/*.mp4
+!website/media/*.mp4
+website/.vercel/
+film/frames/

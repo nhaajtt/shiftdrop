@@ -1,0 +1,213 @@
+/* Design tokens: cream paper / pure black, seven accent palettes (gold default). */
+:root {
+  --bg: #f3f1ec;
+  --surface: #fbfaf7;
+  --surface-2: #ece7ef;
+  --tint: #efe6f4;
+  --line: #dcd4e0;
+  --text: #161512;
+  --muted: #6e6a60;
+  --accent: #5d2e89;
+  --accent-strong: #47197e;
+  --accent-ink: #ffffff;
+  --accent-2: #a13a8d;
+  --scheduled: var(--accent);
+  --completed: #2f7d4f;
+  --no-show: var(--accent-2);
+  --cancelled: var(--muted);
+  --danger: #c2362b;
+  --white: #161512;
+  --pink: #b4329a;
+  --iris: #4636b8;
+  --magenta: #a13a8d;
+  --violet: #8b46c0;
+  --deep: #e6d6e8;
+
+  --ascii-accent: var(--accent);
+  --ascii-flash: var(--accent-2);
+  --ascii-mascot: var(--accent);
+  --ascii-skeleton: var(--muted);
+  --ascii-font: 'JetBrains Mono Variable', ui-monospace, monospace;
+  color-scheme: light;
+}
+
+.dark {
+  --bg: #000000;
+  --surface: #0e0e10;
+  --surface-2: #17171a;
+  --tint: #170f22;
+  --line: #26262a;
+  --text: #ededef;
+  --muted: #9a9aa3;
+  --accent: #bd90e6;
+  --accent-strong: #cbb3fe;
+  --accent-ink: #000000;
+  --accent-2: #e359db;
+  --completed: #5bc28a;
+  --danger: #f06a5e;
+  --white: #ffffff;
+  --pink: #f58fd8;
+  --iris: #8f7dff;
+  --magenta: #e359db;
+  --violet: #9b6cd2;
+  --deep: #351163;
+  color-scheme: dark;
+}
+/* Accent palettes, picked in Setup and set as data-accent on <html> by theme-init.js (gold by default).
+   The violet palette is the base above. Light blocks exclude .dark so they never leak into dark mode. */
+:root:not(.dark)[data-accent='gold'] {
+  --surface-2: #ebe8de;
+  --tint: #f2edd8;
+  --line: #dcd8ca;
+  --accent: #765e0e;
+  --accent-strong: #5b4808;
+  --accent-ink: #ffffff;
+  --accent-2: #a3385c;
+  --pink: #5b4808;
+  --iris: #3e5378;
+  --magenta: #a3385c;
+  --violet: #826a1a;
+  --deep: #e6e0c8;
+}
+.dark[data-accent='gold'] {
+  --tint: #1d1908;
+  --accent: #d9b84a;
+  --accent-strong: #efd88c;
+  --accent-ink: #000000;
+  --accent-2: #e07a9a;
+  --pink: #efd88c;
+  --iris: #8fa3c8;
+  --magenta: #e07a9a;
+  --violet: #ae933c;
+  --deep: #3a3112;
+}
+:root:not(.dark)[data-accent='graphite'] {
+  --surface-2: #e9e6df;
+  --tint: #e9e6df;
+  --line: #dad6cc;
+  --accent: #2a2824;
+  --accent-strong: #000000;
+  --accent-ink: #ffffff;
+  --accent-2: #a3385c;
+  --pink: #3a3732;
+  --iris: #6e6a60;
+  --magenta: #a3385c;
+  --violet: #6e6a60;
+  --deep: #e2ded5;
+}
+.dark[data-accent='graphite'] {
+  --tint: #1a1a1c;
+  --accent: #e6e4de;
+  --accent-strong: #ffffff;
+  --accent-ink: #000000;
+  --accent-2: #e07a9a;
+  --pink: #d8d4ca;
+  --iris: #a8a49a;
+  --magenta: #e07a9a;
+  --violet: #8e8a80;
+  --deep: #2a2a2d;
+}
+:root:not(.dark)[data-accent='noir'] {
+  --surface-2: #ebe8e1;
+  --tint: #efebe0;
+  --line: #dbd7cc;
+  --accent: #1a1917;
+  --accent-strong: #000000;
+  --accent-ink: #ffffff;
+  --accent-2: #8e2c3e;
+  --pink: #6b5a2a;
+  --iris: #7d6a35;
+  --magenta: #8e2c3e;
+  --violet: #6c6855;
+  --deep: #e4ddc9;
+}
+.dark[data-accent='noir'] {
+  --tint: #17150f;
+  --accent: #e9e4d2;
+  --accent-strong: #ffffff;
+  --accent-ink: #000000;
+  --accent-2: #e08a98;
+  --pink: #d8caa0;
+  --iris: #d8caa0;
+  --magenta: #e08a98;
+  --violet: #a89b74;
+  --deep: #2e2a1f;
+}
+:root:not(.dark)[data-accent='oxblood'] {
+  --surface-2: #ece6e3;
+  --tint: #f1e6e6;
+  --line: #ddd3d0;
+  --accent: #6e1f2f;
+  --accent-strong: #4f1220;
+  --accent-ink: #ffffff;
+  --accent-2: #7a6212;
+  --pink: #4f1220;
+  --iris: #7a6212;
+  --magenta: #7a6212;
+  --violet: #8e4252;
+  --deep: #ead8da;
+}
+.dark[data-accent='oxblood'] {
+  --tint: #1e0c10;
+  --accent: #d98a98;
+  --accent-strong: #f2c4cc;
+  --accent-ink: #000000;
+  --accent-2: #d9b84a;
+  --pink: #f2c4cc;
+  --iris: #d9c58a;
+  --magenta: #d9b84a;
+  --violet: #b86a78;
+  --deep: #3a1a20;
+}
+:root:not(.dark)[data-accent='navy'] {
+  --surface-2: #e6e7e8;
+  --tint: #e6e9ef;
+  --line: #d6d8dc;
+  --accent: #1e2f55;
+  --accent-strong: #121e3d;
+  --accent-ink: #ffffff;
+  --accent-2: #7a6010;
+  --pink: #121e3d;
+  --iris: #7a6010;
+  --magenta: #7a6010;
+  --violet: #4a5f8a;
+  --deep: #dde1ea;
+}
+.dark[data-accent='navy'] {
+  --tint: #0c1220;
+  --accent: #9fb4dc;
+  --accent-strong: #d0dcf2;
+  --accent-ink: #000000;
+  --accent-2: #d9b84a;
+  --pink: #d0dcf2;
+  --iris: #d9b84a;
+  --magenta: #d9b84a;
+  --violet: #7c93c2;
+  --deep: #1c2640;
+}
+:root:not(.dark)[data-accent='racing'] {
+  --surface-2: #e5e8e3;
+  --tint: #e3ece6;
+  --line: #d4dad4;
+  --accent: #1f5c45;
+  --accent-strong: #123d2d;
+  --accent-ink: #ffffff;
+  --accent-2: #7a6a2e;
+  --pink: #123d2d;
+  --iris: #7a6a2e;
+  --magenta: #7a6a2e;
+  --violet: #3f6e59;
+  --deep: #d8e4dc;
+}
+.dark[data-accent='racing'] {
+  --tint: #0b1a13;
+  --accent: #7fc4a4;
+  --accent-strong: #c4e8d6;
+  --accent-ink: #000000;
+  --accent-2: #d9c58a;
+  --pink: #c4e8d6;
+  --iris: #d9c58a;
+  --magenta: #d9c58a;
+  --violet: #6aa88b;
+  --deep: #173326;
+}

@@ -1,0 +1,181 @@
+@import './base.css';
+
+/* Same glass family as the wheel and the hub: a frosted card with a blue→violet progress bar. */
+:root {
+  --card: rgb(250 251 255 / 0.94);
+  --text: #0e1330;
+  --muted: rgb(14 19 48 / 0.6);
+  --line: rgb(20 30 80 / 0.12);
+  --rim: rgb(255 255 255 / 0.95);
+  --grad: linear-gradient(90deg, #4f8bff, #8b5cf6);
+  --ok: #1f9d6b;
+  --danger: #d83a52;
+}
+
+:root.dark {
+  --card: rgb(18 20 36 / 0.94);
+  --text: #eef0ff;
+  --muted: rgb(238 240 255 / 0.62);
+  --line: rgb(255 255 255 / 0.1);
+  --rim: rgb(255 255 255 / 0.14);
+  --ok: #4fd6a0;
+  --danger: #ff6b81;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: transparent;
+  color: var(--text);
+}
+
+body {
+  padding: 8px;
+}
+
+#card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background:
+    radial-gradient(120% 140% at 0% 0%, rgb(79 139 255 / 0.12), transparent 60%),
+    radial-gradient(120% 140% at 100% 100%, rgb(139 92 246 / 0.12), transparent 60%),
+    var(--card);
+  box-shadow:
+    inset 0 1px 0 var(--rim),
+    0 10px 28px -8px rgb(10 14 40 / 0.45);
+  animation: rise 260ms cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+
+@keyframes rise {
+  from {
+    transform: translateY(10px) scale(0.98);
+    opacity: 0;
+  }
+}
+
+header,
+footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+#title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-weight: 600;
+}
+
+.tag {
+  font-family: 'JetBrains Mono Variable', ui-monospace, monospace;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  color: #fff;
+  background: var(--grad);
+}
+
+.tag.done {
+  background: var(--ok);
+}
+
+.tag.error {
+  background: var(--danger);
+}
+
+.icon {
+  all: unset;
+  cursor: pointer;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  color: var(--muted);
+}
+
+.icon:hover {
+  background: var(--line);
+  color: var(--text);
+}
+
+.bar {
+  height: 5px;
+  border-radius: 999px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.bar i {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: inherit;
+  background: var(--grad);
+  transition: width 200ms ease;
+}
+
+.label {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+#count {
+  flex: 1;
+}
+
+.btn {
+  all: unset;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 8px;
+  color: var(--text);
+  border: 1px solid var(--line);
+  box-shadow: inset 0 1px 0 var(--rim);
+}
+
+.btn:hover {
+  background: var(--line);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.btn[hidden] {
+  display: none;
+}
+
+#error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#error.note {
+  color: var(--text);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #card {
+    animation: none;
+  }
+}

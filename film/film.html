@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>ShiftDrop film</title>
+<link rel="stylesheet" href="../node_modules/@fontsource-variable/inter/index.css" />
+<link rel="stylesheet" href="../node_modules/@fontsource-variable/jetbrains-mono/index.css" />
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; font-family: 'Inter Variable', system-ui, sans-serif; color: #0e1330; }
+  #stage { position: absolute; inset: 0; overflow: hidden; background: #dfe6ff; }
+  .blob { position: absolute; border-radius: 50%; filter: blur(90px); opacity: .85; }
+  #b1 { width: 1100px; height: 1100px; background: #7fa6ff; left: -250px; top: -420px; }
+  #b2 { width: 1000px; height: 1000px; background: #b99bff; right: -260px; top: 120px; }
+  #b3 { width: 900px; height: 900px; background: #8fe1ff; left: 520px; bottom: -560px; }
+
+  .layer { position: absolute; inset: 0; }
+  /* intro / outro */
+  .title { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; }
+  .mark { width: 132px; height: 132px; border-radius: 36px; display: grid; place-items: center; margin: 0 auto 34px;
+    background: linear-gradient(135deg, #4f8bff, #8b5cf6); color: #fff; font-size: 72px; box-shadow: 0 30px 80px rgb(60 60 180 / .35), inset 0 2px 0 rgb(255 255 255 / .5); }
+  .big { font-size: 112px; font-weight: 750; letter-spacing: -0.035em; margin: 0; }
+  .tag { font-size: 40px; font-weight: 500; color: rgb(14 19 48 / .7); margin: 18px 0 0; letter-spacing: -0.01em; }
+  .tag b { background: linear-gradient(90deg, #3d6fff, #8b5cf6); -webkit-background-clip: text; color: transparent; }
+  .chips { display: flex; gap: 14px; justify-content: center; margin-top: 44px; }
+  .chip { padding: 12px 22px; border-radius: 999px; font-size: 26px; font-weight: 600; background: rgb(255 255 255 / .6); border: 1px solid rgb(255 255 255 / .9); box-shadow: 0 8px 24px rgb(40 50 120 / .12); }
+  .url { font-family: 'JetBrains Mono Variable', monospace; font-size: 28px; margin-top: 34px; color: rgb(14 19 48 / .65); }
+
+  /* caption */
+  #cap { position: absolute; left: 0; right: 0; top: 64px; text-align: center; font-size: 54px; font-weight: 700; letter-spacing: -0.025em; }
+  #cap small { display: block; font-size: 28px; font-weight: 500; color: rgb(14 19 48 / .6); margin-top: 10px; letter-spacing: 0; }
+
+  /* explorer window */
+  #win { position: absolute; left: 330px; top: 230px; width: 1260px; height: 720px; border-radius: 18px; overflow: hidden;
+    background: rgb(250 251 255 / .82); border: 1px solid rgb(255 255 255 / .9); box-shadow: 0 40px 100px rgb(30 40 110 / .28); }
+  #bar { height: 62px; display: flex; align-items: center; gap: 14px; padding: 0 22px; border-bottom: 1px solid rgb(20 30 80 / .08); font-size: 22px; font-weight: 600; }
+  #bar i { width: 14px; height: 14px; border-radius: 50%; background: rgb(20 30 80 / .15); display: inline-block; }
+  #path { margin-left: 18px; padding: 8px 16px; border-radius: 10px; background: rgb(20 30 80 / .05); font-weight: 500; color: rgb(14 19 48 / .7); flex: 1; }
+  #grid { position: absolute; left: 60px; top: 110px; right: 60px; display: grid; grid-template-columns: repeat(5, 1fr); gap: 34px 20px; }
+  .file { display: flex; flex-direction: column; align-items: center; gap: 12px; font-size: 21px; font-weight: 500; transform-origin: 50% 40%; }
+  .ico { width: 116px; height: 136px; border-radius: 14px; position: relative; box-shadow: 0 10px 24px rgb(30 40 110 / .16); display: grid; place-items: end center; padding-bottom: 14px;
+    font-family: 'JetBrains Mono Variable', monospace; font-weight: 700; font-size: 20px; color: #fff; }
+  .ico::before { content: ''; position: absolute; right: 0; top: 0; width: 30px; height: 30px; background: rgb(255 255 255 / .35); border-bottom-left-radius: 12px; }
+  .glow .ico { box-shadow: 0 0 0 4px #8b5cf6, 0 0 40px rgb(139 92 246 / .6); }
+  #ghost { position: absolute; opacity: 0; pointer-events: none; }
+
+  /* wheel */
+  #wheel { position: absolute; width: 640px; height: 640px; margin: -320px 0 0 -320px; opacity: 0; }
+  #disc { position: absolute; left: 50%; top: 50%; border-radius: 50%; transform: translate(-50%, -50%);
+    background: rgb(246 247 252 / .55); backdrop-filter: blur(14px) saturate(1.9); border: 1px solid rgb(255 255 255 / .8);
+    box-shadow: 0 30px 70px rgb(20 30 90 / .3), inset 0 2px 0 rgb(255 255 255 / .8), inset 0 0 40px rgb(255 255 255 / .3); }
+  #disc.warn { box-shadow: 0 0 0 4px rgb(240 60 80 / .85), 0 30px 70px rgb(20 30 90 / .3), inset 0 2px 0 rgb(255 255 255 / .8); }
+  #wheel svg { position: absolute; inset: 0; overflow: visible; }
+  .seg { fill: rgb(255 255 255 / .1); stroke: rgb(20 30 70 / .16); stroke-width: 1; }
+  .seg.hot { fill: rgb(92 100 246 / .9); }
+  .glyph { font-size: 25px; fill: rgb(10 14 32 / .65); }
+  .name { font-size: 16px; font-weight: 650; fill: rgb(10 14 32 / .95); }
+  .num { font-family: 'JetBrains Mono Variable', monospace; font-size: 12px; fill: rgb(10 14 32 / .5); }
+  .hot-l text { fill: #fff; }
+  .sub { font-size: 15px; font-weight: 650; fill: rgb(10 14 32 / .95); }
+  .core { fill: rgb(255 255 255 / .45); stroke: rgb(20 30 70 / .14); }
+  .core.hot { fill: url(#lg); }
+  .clabel { font-size: 21px; font-weight: 700; fill: rgb(10 14 32 / .95); }
+  .chint { font-size: 14px; fill: rgb(10 14 32 / .6); }
+  .chint.warn { fill: #e5354f; font-weight: 800; font-size: 16px; }
+
+  /* cursor, keys, toast */
+  #cursor { position: absolute; width: 38px; height: 50px; margin: -4px 0 0 -6px; filter: drop-shadow(0 4px 6px rgb(0 0 0 / .35)); }
+  #keys { position: absolute; left: 50%; bottom: 52px; display: flex; gap: 16px; transform: translateX(-50%); }
+  .key { min-width: 104px; height: 70px; padding: 0 22px; border-radius: 16px; display: grid; place-items: center; font-size: 28px; font-weight: 700;
+    background: linear-gradient(#fff, #eef0fb); border: 1px solid rgb(20 30 80 / .14); box-shadow: 0 6px 0 rgb(20 30 80 / .14), 0 14px 30px rgb(20 30 80 / .18); opacity: 0; }
+  #toast { position: absolute; right: 60px; bottom: 60px; width: 560px; padding: 20px 24px; border-radius: 22px; opacity: 0;
+    background: radial-gradient(120% 140% at 0% 0%, rgb(79 139 255 / .14), transparent 60%), rgb(250 251 255 / .95);
+    border: 1px solid rgb(20 30 80 / .1); box-shadow: 0 20px 50px rgb(20 30 90 / .28), inset 0 1px 0 #fff; }
+  #toast header { display: flex; align-items: center; gap: 12px; font-size: 24px; font-weight: 650; }
+  #ttag { font-family: 'JetBrains Mono Variable', monospace; font-size: 15px; color: #fff; padding: 4px 10px; border-radius: 8px; background: linear-gradient(90deg, #4f8bff, #8b5cf6); }
+  #ttag.done { background: #1f9d6b; }
+  .tbar { height: 8px; border-radius: 99px; background: rgb(20 30 80 / .1); margin: 16px 0 12px; overflow: hidden; }
+  #tfill { height: 100%; width: 0; background: linear-gradient(90deg, #4f8bff, #8b5cf6); border-radius: inherit; }
+  #tfoot { display: flex; justify-content: space-between; font-size: 18px; color: rgb(14 19 48 / .6); }
+
+  /* montage */
+  #mont { position: absolute; left: 140px; right: 140px; top: 250px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 26px; }
+  .card { height: 160px; border-radius: 24px; padding: 26px 28px; background: rgb(255 255 255 / .55); border: 1px solid rgb(255 255 255 / .9);
+    box-shadow: 0 18px 44px rgb(30 40 110 / .14), inset 0 2px 0 #fff; backdrop-filter: blur(10px); opacity: 0; }
+  .card b { display: block; font-size: 30px; letter-spacing: -0.015em; }
+  .card span { display: block; font-size: 21px; color: rgb(14 19 48 / .62); margin-top: 10px; }
+  .card i { font-style: normal; font-size: 34px; float: right; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="b1" class="blob"></div><div id="b2" class="blob"></div><div id="b3" class="blob"></div>
+
+  <div id="intro" class="title layer"><div>
+    <div class="mark">⇄</div>
+    <h1 class="big">ShiftDrop</h1>
+    <p class="tag">Shift + drag any file. <b>Pick what to do with it.</b></p>
+  </div></div>
+
+  <div id="desk" class="layer">
+    <div id="win">
+      <div id="bar"><i></i><i></i><i></i><span id="path">This PC › Pictures › Trip</span></div>
+      <div id="grid"></div>
+    </div>
+  </div>
+
+  <div id="mont" class="layer" style="position:absolute"></div>
+
+  <div id="outro" class="title layer"><div>
+    <div class="mark">⇄</div>
+    <h1 class="big">ShiftDrop</h1>
+    <div class="chips"><span class="chip">Free</span><span class="chip">Works offline</span><span class="chip">Windows 10 / 11</span><span class="chip">English · Tiếng Việt</span></div>
+    <div class="url">github.com/nhaajtt/shiftdrop</div>
+  </div></div>
+
+  <div id="cap"></div>
+  <div id="ghost"></div>
+  <div id="wheel"><div id="disc"></div><svg id="svg" viewBox="0 0 640 640"></svg></div>
+  <div id="toast"><header><span id="ttag">Working</span><span id="ttitle"></span></header><div class="tbar"><div id="tfill"></div></div><div id="tfoot"><span id="tcount"></span><span>Undo · ⠿ Drag · Show ›</span></div></div>
+  <div id="keys"><div id="kshift" class="key">Shift</div><div id="kn" class="key">6</div><div id="kesc" class="key">Esc</div></div>
+  <svg id="cursor" viewBox="0 0 24 32"><path d="M2 1 L2 25 L8 19.5 L12.2 29 L16.4 27.2 L12.3 18 L20 18 Z" fill="#fff" stroke="#111" stroke-width="1.6" stroke-linejoin="round"/></svg>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+const seg = (t, a, b) => clamp((t - a) / (b - a));
+const ease = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+const out = (x) => 1 - Math.pow(1 - x, 3);
+const spring = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : 1 - Math.exp(-6 * x) * Math.cos(9 * x));
+const lerp = (a, b, x) => a + (b - a) * x;
+const fade = (t, a, b, c, d) => Math.min(seg(t, a, b), 1 - seg(t, c, d));
+
+// --- files in the Explorer window
+const FILES = [
+  ['Beach.heic', '#3d8bff', 'HEIC'], ['Report.pdf', '#e5484d', 'PDF'], ['Interview.mp4', '#8b5cf6', 'MP4'], ['invoice.pdf.exe', '#e5484d', 'PDF'],
+  ['Notes.md', '#30a46c', 'MD'], ['Sunset.jpg', '#f5a524', 'JPG'], ['Podcast.mp3', '#d6409f', 'MP3'], ['data.json', '#0ea5a5', 'JSON'],
+  ['Logo.png', '#3d63dd', 'PNG'],
+];
+const grid = $('grid');
+const fileEls = FILES.map(([n, c, e]) => {
+  const d = document.createElement('div');
+  d.className = 'file';
+  d.innerHTML = `<div class="ico" style="background:linear-gradient(160deg, ${c}, ${c}cc)">${e}</div><div>${n}</div>`;
+  grid.append(d);
+  return d;
+});
+const newFile = (n, c, e) => {
+  const d = document.createElement('div');
+  d.className = 'file';
+  d.innerHTML = `<div class="ico" style="background:linear-gradient(160deg, ${c}, ${c}cc)">${e}</div><div>${n}</div>`;
+  d.style.opacity = 0;
+  grid.append(d);
+  return d;
+};
+const outPng = newFile('Beach.png', '#3d63dd', 'PNG');
+const outTxt = newFile('Report text.txt', '#64748b', 'TXT');
+const center = (el) => {
+  const r = el.querySelector('.ico').getBoundingClientRect();
+  return [r.left + r.width / 2, r.top + r.height / 2];
+};
+
+// --- wheel (same geometry as the app: core 52, ring 58–146, sub ring 152–212; here ×1.35)
+const K = 1.35, C = 320, NS = 'http://www.w3.org/2000/svg';
+const pt = (r, deg) => [C + r * Math.cos(((deg - 90) * Math.PI) / 180), C + r * Math.sin(((deg - 90) * Math.PI) / 180)];
+function sector(r0, r1, a0, a1) {
+  const L = a1 - a0 > 180 ? 1 : 0, [x0, y0] = pt(r1, a0), [x1, y1] = pt(r1, a1), [x2, y2] = pt(r0, a1), [x3, y3] = pt(r0, a0);
+  return `M${x0} ${y0}A${r1} ${r1} 0 ${L} 1 ${x1} ${y1}L${x2} ${y2}A${r0} ${r0} 0 ${L} 0 ${x3} ${y3}Z`;
+}
+const el = (tag, attrs, into) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); into?.append(e); return e; };
+const txt = (into, x, y, cls, s) => { const e = el('text', { x, y, class: cls, 'text-anchor': 'middle', 'dominant-baseline': 'middle' }, into); e.textContent = s; return e; };
+const MENUS = {
+  image: { center: '→ PNG', items: [['⇄', 'Convert'], ['⇲', 'Compress'], ['⤡', 'Resize'], ['↻', 'Rotate'], ['⌗', 'Crop'], ['▣', 'Add BG'], ['T', 'Copy text'], ['⋯', 'More']], sub: ['JPG', 'PNG', 'WEBP', 'AVIF', 'PDF', 'ICO'] },
+  pdf: { center: '→ JPG', items: [['⇄', 'Image'], ['⇲', 'Compress'], ['⊟', 'Split'], ['▤', 'Pages'], ['✍', 'Sign'], ['T', 'Text'], ['№', 'Numbers'], ['⋯', 'More']] },
+  exe: { center: '→ x64dbg', items: [['◉', 'Debug'], ['⌬', 'Reverse'], ['ⓘ', 'Info'], ['≡', 'Strings'], ['✓', 'Signature'], ['◫', 'Sandbox'], ['#', 'Hash'], ['⋯', 'More']] },
+};
+let W = null;
+function buildWheel(kind, warn) {
+  const svg = $('svg');
+  svg.replaceChildren();
+  const defs = el('defs', {}, svg), lg = el('linearGradient', { id: 'lg', x1: 0, y1: 0, x2: 1, y2: 1 }, defs);
+  el('stop', { offset: 0, 'stop-color': '#4f8bff' }, lg); el('stop', { offset: 1, 'stop-color': '#8b5cf6' }, lg);
+  const m = MENUS[kind], n = m.items.length, s = 360 / n, segs = [];
+  m.items.forEach(([g, name], i) => {
+    const gr = el('g', {}, svg);
+    const p = el('path', { d: sector(58 * K, 146 * K, i * s - s / 2, i * s + s / 2), class: 'seg' }, gr);
+    const [x, y] = pt(102 * K, i * s);
+    txt(gr, x, y - 12, 'glyph', g); txt(gr, x, y + 15, 'name', name);
+    const [nx, ny] = pt(146 * K - 14, i * s); txt(gr, nx, ny, 'num', i + 1);
+    segs.push({ gr, p });
+  });
+  const ring2 = el('g', { opacity: 0 }, svg), subs = [];
+  if (m.sub) {
+    const w = 30, start = -(w * m.sub.length) / 2;
+    m.sub.forEach((name, j) => {
+      const gr = el('g', {}, ring2);
+      const p = el('path', { d: sector(152 * K, 212 * K, start + j * w, start + (j + 1) * w), class: 'seg' }, gr);
+      const [x, y] = pt(182 * K, start + j * w + w / 2); txt(gr, x, y, 'sub', name);
+      subs.push({ gr, p, mid: start + j * w + w / 2 });
+    });
+  }
+  const core = el('circle', { cx: C, cy: C, r: 52 * K, class: 'core' }, svg);
+  txt(svg, C, C - 8, 'clabel', m.center);
+  txt(svg, C, C + 20, warn ? 'chint warn' : 'chint', warn ? '⚠ fake type' : 'drop here');
+  $('disc').classList.toggle('warn', !!warn);
+  W = { kind, segs, subs, ring2, core, s };
+}
+function hot(i, j) {
+  W.segs.forEach((g, k) => { g.p.classList.toggle('hot', k === i); g.gr.classList.toggle('hot-l', k === i); });
+  W.subs.forEach((g, k) => { g.p.classList.toggle('hot', k === j); g.gr.classList.toggle('hot-l', k === j); });
+}
+const wedgeAt = (i, r) => { const [x, y] = pt(r, i * W.s); return [x - C, y - C]; };
+
+// --- montage cards
+const CARDS = [
+  ['⊡', 'Fit to 8 MB', 'Videos sized for Discord, Zalo, email'], ['▭', 'Subtitles', 'From speech, offline'], ['T', 'Copy text', 'From any picture or scan'], ['◐', 'Remove background', 'On your PC'],
+  ['✍', 'Sign PDFs', 'Draw or type, place, done'], ['▯', 'To phone', 'QR code over Wi-Fi'], ['⚡', 'Recipes', 'Many actions, one drop'], ['⌕', 'Quick look', 'Ctrl + Space in Explorer'],
+  ['⚿', 'Encrypt', 'Password-protect any file'], ['⛨', 'Real type', 'Catches invoice.pdf.exe'], ['↶', 'Undo', 'Right from the notification'], ['文', 'Translate', 'With your Claude key'],
+];
+const cards = CARDS.map(([i, b, s]) => { const d = document.createElement('div'); d.className = 'card'; d.innerHTML = `<i>${i}</i><b>${b}</b><span>${s}</span>`; $('mont').append(d); return d; });
+
+// --- one drag scene: file index, wheel kind, path of the pointer, result
+function caption(html) { if ($('cap').innerHTML !== html) $('cap').innerHTML = html; }
+
+function render(t) {
+  // background drift
+  $('b1').style.transform = `translate(${Math.sin(t / 7) * 60}px, ${Math.cos(t / 9) * 40}px)`;
+  $('b2').style.transform = `translate(${Math.cos(t / 8) * 70}px, ${Math.sin(t / 6) * 50}px)`;
+  $('b3').style.transform = `translate(${Math.sin(t / 10) * 80}px, 0)`;
+
+  // intro 0–3.4, outro 36–40
+  const io = fade(t, -1, 0, 2.8, 3.4);
+  $('intro').style.opacity = io;
+  $('intro').style.transform = `scale(${lerp(0.94, 1, out(seg(t, 0, 1.2)))})`;
+  const oo = seg(t, 36, 36.8);
+  $('outro').style.opacity = oo;
+  $('outro').style.transform = `scale(${lerp(0.96, 1, out(oo))})`;
+
+  // desktop scenes 3–28.5
+  const dk = fade(t, 3, 3.6, 28, 28.6);
+  $('desk').style.opacity = dk;
+  $('desk').style.transform = `translateY(${lerp(30, 0, out(seg(t, 3, 3.8)))}px)`;
+
+  // montage 28.6–36
+  $('mont').style.opacity = 1 - seg(t, 35.4, 36);
+  cards.forEach((c, i) => {
+    const x = out(seg(t, 29.2 + i * 0.22, 29.8 + i * 0.22));
+    c.style.opacity = x;
+    c.style.transform = `translateY(${lerp(40, 0, x)}px) scale(${lerp(0.94, 1, x)})`;
+  });
+
+  // captions
+  if (t < 3.2) caption('');
+  else if (t < 7.2) caption('Drag a file. Hold <b>Shift</b>.<small>Works in File Explorer and on the desktop</small>');
+  else if (t < 10.8) caption('Drop it on what you want.<small>The original is never touched</small>');
+  else if (t < 13) caption('Saved right next to it.<small>Undo, or drag the result into any app</small>');
+  else if (t < 20.5) caption('Every kind of file gets its own wheel.<small>Number keys 1–8 pick a wedge</small>');
+  else if (t < 28.4) caption('It warns you when a file lies.<small>“invoice.pdf.exe” is a program, not a PDF</small>');
+  else if (t < 36) caption('And a lot more, all on your PC.');
+  else caption('');
+  $('cap').style.opacity = t < 3.2 ? 0 : Math.min(seg(t, 3.4, 4), 1 - seg(t, 35.4, 36));
+
+  // defaults
+  let cur = [1700, 900], wheelOpen = 0, wheelAt = null, ghost = null, shift = 0, nkey = 0, esc = 0, toast = 0;
+  hotI = -1; hotJ = -1;
+
+  // scene A: Beach.heic → Convert › PNG (3.8–13)
+  if (t >= 3.6 && t < 13) {
+    if (!W || W.kind !== 'image') buildWheel('image');
+    const f = center(fileEls[0]);
+    const grab = [f[0], f[1]];
+    const dragTo = [f[0] + 260, f[1] + 150];
+    if (t < 4.8) cur = [lerp(1500, grab[0], ease(seg(t, 3.8, 4.8))), lerp(950, grab[1], ease(seg(t, 3.8, 4.8)))];
+    else if (t < 5.8) { cur = [lerp(grab[0], dragTo[0], ease(seg(t, 5, 5.8))), lerp(grab[1], dragTo[1], ease(seg(t, 5, 5.8)))]; ghost = 0; }
+    else { ghost = 0; cur = dragTo; }
+    shift = fade(t, 5.6, 5.8, 9.2, 9.5);
+    wheelAt = f;
+    wheelOpen = spring(seg(t, 6, 6.8)) * (1 - seg(t, 9.0, 9.25));
+    if (t >= 6.6 && t < 9.1) {
+      const conv = wedgeAt(0, 102 * K), sub = (() => { const [x, y] = pt(182 * K, W.subs[1].mid); return [x - C, y - C]; })();
+      if (t < 7.4) { const x = ease(seg(t, 6.6, 7.4)); cur = [lerp(dragTo[0], f[0] + conv[0], x), lerp(dragTo[1], f[1] + conv[1], x)]; }
+      else if (t < 8.2) { cur = [f[0] + conv[0], f[1] + conv[1]]; hotI = 0; }
+      else { const x = ease(seg(t, 8.2, 8.8)); cur = [lerp(f[0] + conv[0], f[0] + sub[0], x), lerp(f[1] + conv[1], f[1] + sub[1], x)]; hotI = x < 0.5 ? 0 : -1; hotJ = x >= 0.5 ? 1 : -1; }
+      if (t >= 7.2) W.ring2.setAttribute('opacity', out(seg(t, 7.2, 7.6)));
+    } else W.ring2.setAttribute('opacity', 0);
+    if (t >= 9.1) { ghost = null; cur = [lerp(cur[0], 1500, ease(seg(t, 9.6, 11))), lerp(cur[1], 980, ease(seg(t, 9.6, 11)))]; }
+    toast = fade(t, 9.3, 9.6, 12.4, 12.9);
+    setToast('Converting to PNG', 'Converted to PNG', seg(t, 9.6, 10.8), '1 of 1 saved');
+    outPng.style.opacity = out(seg(t, 10.8, 11.3));
+    outPng.style.transform = `scale(${lerp(0.6, 1, spring(seg(t, 10.8, 11.6)))})`;
+    outPng.classList.toggle('glow', t > 10.8 && t < 12.6);
+  } else if (t < 3.6) { outPng.style.opacity = 0; }
+
+  // scene B: Report.pdf → key 6 → Text (13–20.5)
+  if (t >= 13 && t < 20.5) {
+    if (!W || W.kind !== 'pdf') buildWheel('pdf');
+    W.ring2.setAttribute('opacity', 0);
+    const f = center(fileEls[1]);
+    if (t < 14.2) { const x = ease(seg(t, 13.1, 14.2)); cur = [lerp(1500, f[0], x), lerp(980, f[1], x)]; }
+    else { ghost = 1; const x = ease(seg(t, 14.4, 15)); cur = [lerp(f[0], f[0] + 200, x), lerp(f[1], f[1] + 120, x)]; }
+    shift = fade(t, 15, 15.2, 17.6, 17.9);
+    wheelAt = f;
+    wheelOpen = spring(seg(t, 15.3, 16.1)) * (1 - seg(t, 17.4, 17.65));
+    nkey = fade(t, 16.4, 16.55, 17.3, 17.6);
+    if (t > 16.5 && t < 17.5) hotI = 5;
+    if (t >= 17.5) ghost = null;
+    toast = fade(t, 17.7, 18, 20, 20.4);
+    setToast('Getting text', 'Got text', seg(t, 18, 19), '1 of 1 saved · 3 scanned pages read with OCR');
+    outTxt.style.opacity = out(seg(t, 19, 19.4));
+    outTxt.style.transform = `scale(${lerp(0.6, 1, spring(seg(t, 19, 19.8)))})`;
+    outTxt.classList.toggle('glow', t > 19 && t < 20.5);
+  } else if (t < 13) { outTxt.style.opacity = 0; }
+
+  // scene C: invoice.pdf.exe → warning, Esc (20.5–28.4)
+  if (t >= 20.5 && t < 28.4) {
+    if (!W || W.kind !== 'exe') buildWheel('exe', true);
+    W.ring2.setAttribute('opacity', 0);
+    const f = center(fileEls[3]);
+    if (t < 21.7) { const x = ease(seg(t, 20.6, 21.7)); cur = [lerp(1500, f[0], x), lerp(980, f[1], x)]; }
+    else { ghost = 3; const x = ease(seg(t, 21.9, 22.5)); cur = [lerp(f[0], f[0] - 180, x), lerp(f[1], f[1] + 160, x)]; }
+    shift = fade(t, 22.4, 22.6, 26.2, 26.5);
+    wheelAt = f;
+    wheelOpen = spring(seg(t, 22.7, 23.5)) * (1 - seg(t, 26.1, 26.35));
+    if (t > 23.8 && t < 25.6) { const sb = wedgeAt(5, 102 * K); const x = ease(seg(t, 23.8, 24.6)); cur = [lerp(f[0] - 180, f[0] + sb[0], x), lerp(f[1] + 160, f[1] + sb[1], x)]; if (x > 0.9) hotI = 5; }
+    else if (t >= 25.6) { const sb = wedgeAt(5, 102 * K); cur = [f[0] + sb[0], f[1] + sb[1]]; }
+    esc = fade(t, 25.8, 25.95, 26.8, 27.1);
+    if (t >= 26.2) { ghost = null; const x = ease(seg(t, 26.6, 28)); cur = [lerp(cur[0], 1600, x), lerp(cur[1], 990, x)]; }
+  }
+  if (t >= 28.4) cur = [2100, 1200];
+
+  // apply
+  $('cursor').style.transform = `translate(${cur[0]}px, ${cur[1]}px)`;
+  $('cursor').style.opacity = t < 3.7 || t > 28.4 ? 0 : 1;
+  const g = $('ghost');
+  if (ghost != null) {
+    if (g.dataset.i != ghost) { g.innerHTML = fileEls[ghost].innerHTML; g.className = 'file'; g.dataset.i = ghost; }
+    g.style.opacity = 0.7;
+    g.style.transform = `translate(${cur[0] - 70}px, ${cur[1] - 60}px) scale(.85)`;
+  } else g.style.opacity = 0;
+  fileEls.forEach((e, i) => (e.style.opacity = ghost === i ? 0.45 : 1));
+  const wh = $('wheel');
+  wh.style.opacity = clamp(wheelOpen * 1.4);
+  if (wheelAt) { wh.style.left = `${wheelAt[0]}px`; wh.style.top = `${wheelAt[1]}px`; }
+  wh.style.transform = `scale(${lerp(0.82, 1, wheelOpen)})`;
+  const r2 = W && W.ring2.getAttribute('opacity') > 0.05 && hotJ >= 0 || (W && +W.ring2.getAttribute('opacity') > 0.05);
+  const R = (r2 ? 216 : 150) * K;
+  $('disc').style.width = $('disc').style.height = `${R * 2}px`;
+  if (W) hot(hotI, hotJ);
+  $('kshift').style.opacity = shift; $('kshift').style.transform = `translateY(${lerp(20, 0, out(shift))}px)`;
+  $('kn').style.opacity = nkey; $('kn').style.display = nkey > 0 ? '' : 'none';
+  $('kesc').style.opacity = esc; $('kesc').style.display = esc > 0 ? '' : 'none';
+  $('toast').style.opacity = toast;
+  $('toast').style.transform = `translateY(${lerp(30, 0, out(toast))}px)`;
+}
+let hotI = -1, hotJ = -1;
+function setToast(running, done, p, count) {
+  const fin = p >= 1;
+  $('ttag').textContent = fin ? 'Done' : 'Working';
+  $('ttag').className = fin ? 'done' : '';
+  $('ttitle').textContent = fin ? done : `${running}…`;
+  $('tfill').style.width = `${Math.round(p * 100)}%`;
+  $('tcount').textContent = fin ? count : 'Working…';
+}
+window.render = render;
+document.fonts.ready.then(() => { render(0); window.ready = true; });
+</script>
+</body>
+</html>
