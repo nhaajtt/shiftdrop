@@ -10,7 +10,7 @@ A glass wheel opens around the file you are dragging, with the actions that make
 kind of file: convert, compress, crop, sign, transcribe, check, share. Everything runs on your PC.
 
 [**Download for Windows**](https://github.com/nhaajtt/shiftdrop/releases/latest) ·
-[Website](https://shiftdrop-psi.vercel.app) ·
+[Website](https://shiftdrop.nhaajt.com) ·
 [Watch the demo](docs/media/demo.mp4)
 
 <img src="docs/media/demo.gif" width="760" alt="Dragging a photo with Shift held opens a round menu; dropping it on PNG converts the file" />
