@@ -27,10 +27,23 @@ setLang(localStorage.getItem('lang') || ((navigator.language || '').toLowerCase(
 document.querySelectorAll('[data-lang]').forEach((b) => (b.onclick = () => setLang(b.dataset.lang)));
 
 // --- light / dark
-document.getElementById('theme').onclick = () => {
+// a circle grows from the button into the new theme (View Transitions API where supported)
+document.getElementById('theme').onclick = (e) => {
   const dark = document.documentElement.dataset.theme !== 'dark';
-  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
-  localStorage.setItem('theme', dark ? 'dark' : 'light');
+  const apply = () => {
+    document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+    localStorage.setItem('theme', dark ? 'dark' : 'light');
+  };
+  if (!document.startViewTransition || reduce) return apply();
+  const x = e.clientX || innerWidth - 60;
+  const y = e.clientY || 30;
+  const r = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
+  document.startViewTransition(apply).ready.then(() =>
+    document.documentElement.animate(
+      { clipPath: [`circle(0 at ${x}px ${y}px)`, `circle(${r}px at ${x}px ${y}px)`] },
+      { duration: 520, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)', pseudoElement: '::view-transition-new(root)' },
+    ),
+  );
 };
 
 // --- reveal on scroll (steps also draw their line)
@@ -69,34 +82,53 @@ const counter = new IntersectionObserver((entries) =>
 document.querySelectorAll('.count').forEach((el) => counter.observe(el));
 
 if (!reduce) {
+  // pointer effects write styles at most once per frame, whatever the mouse rate
+  const frame = (fn) => {
+    let last = null;
+    return (e) => {
+      if (!last) requestAnimationFrame(() => (fn(last), (last = null)));
+      last = e;
+    };
+  };
+
+  // positions are measured once when the pointer enters, never inside the move handler,
+  // so moving the mouse causes no layout at all
+  const tracked = (el, onMove, onLeave) => {
+    let rect = null;
+    el.addEventListener('pointerenter', () => (rect = el.getBoundingClientRect()));
+    el.addEventListener('pointermove', frame((e) => rect && onMove(e, rect)));
+    el.addEventListener('pointerleave', () => ((rect = null), onLeave?.()));
+  };
+
   // spotlight follows the pointer on cards
-  document.querySelectorAll('.card').forEach((c) =>
-    c.addEventListener('pointermove', (e) => {
-      const r = c.getBoundingClientRect();
-      c.style.setProperty('--x', `${e.clientX - r.left}px`);
-      c.style.setProperty('--y', `${e.clientY - r.top}px`);
-    }),
-  );
+  document.querySelectorAll('.card').forEach((c) => {
+    const spot = document.createElement('i');
+    spot.className = 'spot';
+    spot.setAttribute('aria-hidden', 'true');
+    c.prepend(spot);
+    tracked(c, (e, r) => (spot.style.transform = `translate(${(e.clientX - r.left).toFixed(0)}px, ${(e.clientY - r.top).toFixed(0)}px)`));
+  });
 
   // hero video tilts toward the pointer
   const tilt = document.querySelector('.tilt');
-  const hero = document.querySelector('.hero');
-  hero.addEventListener('pointermove', (e) => {
-    const r = tilt.getBoundingClientRect();
-    const x = (e.clientX - (r.left + r.width / 2)) / r.width;
-    const y = (e.clientY - (r.top + r.height / 2)) / r.height;
-    tilt.style.transform = `rotateY(${x * 8}deg) rotateX(${-y * 8}deg)`;
-  });
-  hero.addEventListener('pointerleave', () => (tilt.style.transform = ''));
+  tracked(
+    tilt,
+    (e, r) => {
+      const x = (e.clientX - (r.left + r.width / 2)) / r.width;
+      const y = (e.clientY - (r.top + r.height / 2)) / r.height;
+      tilt.style.transform = `rotateY(${(x * 8).toFixed(2)}deg) rotateX(${(-y * 8).toFixed(2)}deg)`;
+    },
+    () => (tilt.style.transform = ''),
+  );
 
   // download buttons lean toward the pointer
-  document.querySelectorAll('.magnetic').forEach((b) => {
-    b.addEventListener('pointermove', (e) => {
-      const r = b.getBoundingClientRect();
-      b.style.transform = `translate(${(e.clientX - r.left - r.width / 2) * 0.15}px, ${(e.clientY - r.top - r.height / 2) * 0.25}px)`;
-    });
-    b.addEventListener('pointerleave', () => (b.style.transform = ''));
-  });
+  document.querySelectorAll('.magnetic').forEach((b) =>
+    tracked(
+      b,
+      (e, r) => (b.style.transform = `translate(${((e.clientX - r.left - r.width / 2) * 0.15).toFixed(1)}px, ${((e.clientY - r.top - r.height / 2) * 0.25).toFixed(1)}px)`),
+      () => (b.style.transform = ''),
+    ),
+  );
 }
 
 // --- phones: send the download page to a PC; no autoplay on mobile data

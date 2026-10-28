@@ -121,10 +121,14 @@ footer {
 .bar i {
   display: block;
   height: 100%;
-  width: 0;
+  width: 100%;
   border-radius: inherit;
   background: var(--grad);
-  transition: width 200ms ease;
+  /* progress is a scale, not a width: no layout on every update */
+  transform: scaleX(0);
+  transform-origin: 0 50%;
+  transition: transform 200ms ease;
+  will-change: transform;
 }
 
 .label {

@@ -20,7 +20,7 @@ function render(u) {
   $('state').textContent = TAGS[u.state];
   $('state').className = `tag ${u.state}`;
   $('title').textContent = u.state === 'done' ? u.title.replace(/^(\w+)ing\b/, (_, w) => doneWord(w)) : `${u.title}…`;
-  $('fill').style.width = `${Math.round(u.percent * 100)}%`;
+  $('fill').style.transform = `scaleX(${u.percent.toFixed(3)})`;
   $('count').textContent = `${u.done} of ${u.total} saved`;
   const waiting = [...jobs.values()].filter((j) => j.state === 'running' && j.id !== u.id).length;
   $('queue').textContent = waiting ? `+${waiting} queued` : '';

@@ -55,33 +55,36 @@ body {
   inset: 0;
   z-index: -1;
   overflow: hidden;
-  filter: blur(70px) saturate(1.3);
   opacity: 0.75;
 }
 
+/* soft blobs drawn as radial gradients: no blur filter to recompute while they drift,
+   so the drift is a pure compositor transform */
 .aurora i {
   position: absolute;
-  width: 55vmax;
-  height: 55vmax;
+  width: 75vmax;
+  height: 75vmax;
   border-radius: 50%;
+  background: radial-gradient(closest-side, var(--c), transparent) !important;
   animation: drift 26s ease-in-out infinite alternate;
+  will-change: transform;
 }
 
 .aurora i:nth-child(1) {
-  background: var(--blob-a);
+  --c: var(--blob-a);
   left: -15vmax;
   top: -20vmax;
 }
 
 .aurora i:nth-child(2) {
-  background: var(--blob-b);
+  --c: var(--blob-b);
   right: -18vmax;
   top: 10vmax;
   animation-duration: 32s;
 }
 
 .aurora i:nth-child(3) {
-  background: var(--blob-c);
+  --c: var(--blob-c);
   left: 20vmax;
   bottom: -30vmax;
   animation-duration: 38s;

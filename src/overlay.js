@@ -15,6 +15,7 @@ const GLASS = [150, 216]; // radius of the frosted disc without / with the sub-o
 const NS = 'http://www.w3.org/2000/svg';
 const svg = document.getElementById('wheel');
 const glass = document.getElementById('glass');
+const disc = document.getElementById('disc');
 
 let paths = [];
 let warnings = []; // files pretending to be another type
@@ -110,7 +111,7 @@ function showRing2(i) {
   ring2 = null;
   parent = i;
   const item = menu.items[i];
-  glass.style.setProperty('--r', `${item?.sub ? GLASS[1] : GLASS[0]}px`);
+  disc.classList.toggle('big', !!item?.sub);
   if (!item?.sub) return;
   ring2 = el('g', { class: 'ring2' }, svg);
   el('circle', { cx: C, cy: C, r: GLASS[1] - 1, class: 'edge' }, ring2);
@@ -211,10 +212,10 @@ listen('overlay:show', ({ payload }) => {
   locked = false;
   warnings = payload.warnings || [];
   document.body.classList.toggle('warn', warnings.length > 0);
-  // the screen behind the menu, blurred by CSS into frosted glass
-  glass.firstChild.style.backgroundImage = payload.backdrop ? `url(${payload.backdrop})` : 'none';
+  // the screen behind the menu, frosted when it was captured
+  disc.firstChild.style.backgroundImage = payload.backdrop ? `url(${payload.backdrop})` : 'none';
   if (payload.backdrop) shade(payload.backdrop);
-  glass.style.setProperty('--r', `${GLASS[0]}px`);
+  disc.classList.remove('big');
   menu = paths.length ? menuFor(paths, ctx.apps) : null;
   render();
 });
@@ -253,11 +254,16 @@ listen('overlay:key', ({ payload: n }) => {
   }
 });
 
+// mice report up to 1000 moves a second; handle only the latest one per frame
+let pending = null;
 listen('overlay:move', ({ payload: [x, y] }) => {
-  if (svg.childElementCount) hover({ x, y });
+  if (!svg.childElementCount) return;
+  if (!pending) requestAnimationFrame(() => (pending && hover(pending), (pending = null)));
+  pending = { x, y };
 });
 
 listen('overlay:drop', ({ payload: [x, y] }) => {
+  pending = null;
   hover({ x, y });
   drop();
 });

@@ -31,24 +31,36 @@ body.on-dark {
   --hot: rgb(110 100 250 / 0.78);
 }
 
+/* The disc is always built at its large size (radius 216) and shown smaller with a transform,
+   so opening and growing it never touches layout or repaints: only the compositor works.
+   The background inside scales the other way, so it stays aligned with the real screen. */
 #glass {
-  --r: 150px;
   position: fixed;
-  left: calc(50vw - var(--r));
-  top: calc(50vh - var(--r));
-  width: calc(2 * var(--r));
-  height: calc(2 * var(--r));
-  border-radius: 50%;
-  overflow: hidden;
+  left: calc(50vw - 216px);
+  top: calc(50vh - 216px);
+  width: 432px;
+  height: 432px;
   opacity: 0;
   transform: scale(0.9);
   transition:
     opacity 140ms ease-out,
-    transform 220ms cubic-bezier(0.34, 1.4, 0.64, 1),
-    left 180ms cubic-bezier(0.34, 1.3, 0.64, 1),
-    top 180ms cubic-bezier(0.34, 1.3, 0.64, 1),
-    width 180ms cubic-bezier(0.34, 1.3, 0.64, 1),
-    height 180ms cubic-bezier(0.34, 1.3, 0.64, 1);
+    transform 240ms cubic-bezier(0.34, 1.4, 0.64, 1);
+  will-change: transform, opacity;
+}
+
+#glass.open {
+  opacity: 1;
+  transform: none;
+}
+
+#disc {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  overflow: hidden;
+  transform: scale(0.69444); /* 150 / 216 */
+  transition: transform 200ms cubic-bezier(0.34, 1.3, 0.64, 1);
+  will-change: transform;
   box-shadow:
     0 18px 50px rgb(0 0 0 / 0.28),
     0 2px 8px rgb(0 0 0 / 0.14),
@@ -57,26 +69,29 @@ body.on-dark {
     inset 0 0 28px rgb(255 255 255 / 0.16);
 }
 
-#glass.open {
-  opacity: 1;
+#disc.big {
   transform: none;
 }
 
-#glass .behind {
+/* the screen behind, already frosted when captured */
+#disc .behind {
   position: absolute;
-  left: calc(var(--r) - 50vw);
-  top: calc(var(--r) - 50vh);
+  left: calc(216px - 50vw);
+  top: calc(216px - 50vh);
   width: 100vw;
   height: 100vh;
   background-size: 100% 100%;
-  filter: blur(7px) saturate(1.9) brightness(1.06);
-  transition:
-    left 180ms cubic-bezier(0.34, 1.3, 0.64, 1),
-    top 180ms cubic-bezier(0.34, 1.3, 0.64, 1);
+  transform: scale(1.44); /* 216 / 150, undoes the disc's scale */
+  transition: transform 200ms cubic-bezier(0.34, 1.3, 0.64, 1);
+  will-change: transform;
+}
+
+#disc.big .behind {
+  transform: none;
 }
 
 /* barely-there tint */
-#glass::after {
+#disc::after {
   content: '';
   position: absolute;
   inset: 0;
@@ -84,12 +99,12 @@ body.on-dark {
   background: rgb(246 247 252 / 0.5);
 }
 
-body.on-dark #glass::after {
+body.on-dark #disc::after {
   background: rgb(16 18 30 / 0.38);
 }
 
 /* specular rim: bright top-left, faint bottom-right */
-#glass::before {
+#disc::before {
   content: '';
   position: absolute;
   inset: 0;
@@ -221,14 +236,15 @@ body.on-dark text {
 
 @media (prefers-reduced-motion: reduce) {
   #glass,
-  #glass .behind,
+  #disc,
+  #disc .behind,
   #wheel {
     transition: opacity 100ms linear;
   }
 }
 
 /* a file pretends to be something it isn't: red rim and hint */
-body.warn #glass {
+body.warn #disc {
   box-shadow:
     0 0 0 2px rgb(240 60 80 / 0.85),
     0 18px 50px rgb(0 0 0 / 0.28);

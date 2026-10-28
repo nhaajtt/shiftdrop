@@ -223,6 +223,40 @@ pub fn show_no_activate(hwnd: *mut c_void, x: i32, y: i32, w: i32, h: i32) {
 
 
 
+/// Frosted glass on the small capture: three box-blur passes (close to a Gaussian), then
+/// more colour and a touch of brightness, like light through tinted glass.
+fn frost(rgb: &mut [u8], w: usize, h: usize) {
+    let mut buf = vec![0u8; rgb.len()];
+    for _ in 0..3 {
+        box_pass(rgb, &mut buf, w, h, 2, true);
+        box_pass(&buf, rgb, w, h, 2, false);
+    }
+    for p in rgb.chunks_exact_mut(3) {
+        let l = 0.2126 * p[0] as f32 + 0.7152 * p[1] as f32 + 0.0722 * p[2] as f32;
+        for c in p.iter_mut() {
+            *c = ((l + (*c as f32 - l) * 1.9) * 1.06).clamp(0.0, 255.0) as u8;
+        }
+    }
+}
+
+/// One horizontal or vertical box-blur pass of radius `r`, edges clamped.
+fn box_pass(src: &[u8], dst: &mut [u8], w: usize, h: usize, r: usize, horizontal: bool) {
+    let (len, lines) = if horizontal { (w, h) } else { (h, w) };
+    let idx = |line: usize, i: usize| if horizontal { (line * w + i) * 3 } else { (i * w + line) * 3 };
+    let n = (2 * r + 1) as u32;
+    for line in 0..lines {
+        for c in 0..3 {
+            let mut sum: u32 = (0..=2 * r).map(|k| src[idx(line, k.saturating_sub(r).min(len - 1)) + c] as u32).sum();
+            for i in 0..len {
+                dst[idx(line, i) + c] = (sum / n) as u8;
+                let out = i.saturating_sub(r);
+                let inn = (i + r + 1).min(len - 1);
+                sum = sum + src[idx(line, inn) + c] as u32 - src[idx(line, out) + c] as u32;
+            }
+        }
+    }
+}
+
 /// A small, downscaled copy of the screen inside the rectangle, as JPEG bytes. The menu blurs it
 /// into its frosted-glass background, so it must be taken before the menu appears.
 pub fn capture(x: i32, y: i32, w: i32, h: i32, shrink: i32) -> Option<Vec<u8>> {
@@ -250,7 +284,9 @@ pub fn capture(x: i32, y: i32, w: i32, h: i32, shrink: i32) -> Option<Vec<u8>> {
         if rows == 0 {
             return None;
         }
-        let rgb: Vec<u8> = bgra.chunks_exact(4).flat_map(|p| [p[2], p[1], p[0]]).collect();
+        let mut rgb: Vec<u8> = bgra.chunks_exact(4).flat_map(|p| [p[2], p[1], p[0]]).collect();
+        // the frost is baked in here, once: animating a CSS blur would redo it every frame
+        frost(&mut rgb, sw as usize, sh as usize);
         let mut out = Vec::new();
         image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, 80).encode(&rgb, sw as u32, sh as u32, image::ExtendedColorType::Rgb8).ok()?;
         Some(out)
