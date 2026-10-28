@@ -14,6 +14,7 @@ const SECONDS = Number(process.argv[2] || 40);
 const FPS = Number(process.argv[3] || 30);
 const PAGE = process.argv[4] || 'film';
 const BASE = PAGE === 'film' ? 'demo' : PAGE;
+const [WIDTH, HEIGHT] = PAGE === 'vertical' ? [1080, 1920] : [1920, 1080];
 const PORT = 9333;
 const frames = join(here, 'frames', PAGE);
 const media = resolve(here, '..', 'docs', 'media');
@@ -32,7 +33,7 @@ mkdirSync(media, { recursive: true });
 const profile = join(process.env.TEMP || '/tmp', 'shiftdrop-film-edge');
 const browser = spawn(edge, [
   '--headless=new', `--remote-debugging-port=${PORT}`, `--user-data-dir=${profile}`,
-  '--window-size=1920,1080', '--hide-scrollbars', '--force-device-scale-factor=1', '--allow-file-access-from-files', 'about:blank',
+  `--window-size=${WIDTH},${HEIGHT}`, '--hide-scrollbars', '--force-device-scale-factor=1', '--allow-file-access-from-files', 'about:blank',
 ]);
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -61,7 +62,7 @@ const send = (method, params = {}) =>
     ws.send(JSON.stringify({ id: i, method, params }));
   });
 
-await send('Emulation.setDeviceMetricsOverride', { width: 1920, height: 1080, deviceScaleFactor: 1, mobile: false });
+await send('Emulation.setDeviceMetricsOverride', { width: WIDTH, height: HEIGHT, deviceScaleFactor: 1, mobile: false });
 await send('Page.enable');
 await send('Page.navigate', { url: pathToFileURL(join(here, `${PAGE}.html`)).href });
 for (let i = 0; i < 100; i++) {

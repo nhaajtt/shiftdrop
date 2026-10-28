@@ -26,6 +26,7 @@ function render(u) {
   $('queue').textContent = waiting ? `+${waiting} queued` : '';
   $('show').hidden = !u.outputs.length;
   $('drag').hidden = !u.outputs.length || u.state !== 'done';
+  $('report').hidden = u.state !== 'error';
   $('undo').hidden = !u.outputs.length || u.state !== 'done';
   $('undo').disabled = false;
   $('undo').textContent = 'Undo';
@@ -84,6 +85,10 @@ $('drag').addEventListener('pointerdown', (e) => {
   e.preventDefault();
   const u = jobs.get(shown);
   if (u?.outputs.length) startDrag({ item: u.outputs, icon: dragIcon }).catch(() => {});
+});
+$('report').addEventListener('click', () => {
+  const u = jobs.get(shown);
+  invoke('report_bug', { context: u ? `${u.title}: ${u.error || ''}` : null });
 });
 $('undo').addEventListener('click', async () => {
   const u = jobs.get(shown);

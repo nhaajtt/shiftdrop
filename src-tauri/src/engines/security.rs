@@ -414,6 +414,7 @@ pub const TOOLS: &[(&str, &str, &str, &str)] = &[
     ("floss", "mandiant/flare-floss", "windows", "floss.exe"),
     ("upx", "upx/upx", "win64", "upx.exe"),
     ("qpdf", "qpdf/qpdf", "msvc64", "qpdf.exe"),
+    ("yara", "VirusTotal/yara-x", "windows", "yr.exe"),
     ("whisper", "ggml-org/whisper.cpp", "whisper-bin-x64", "whisper-cli.exe"),
     (
         "upscale",
@@ -525,6 +526,25 @@ fn run_tool(src: &Path, tool: &str) -> Result<Vec<PathBuf>> {
             if !o.status.success() {
                 bail!("{}", String::from_utf8_lossy(&o.stdout).lines().find(|l| l.contains("Exception") || l.contains("error")).unwrap_or("not packed with UPX"));
             }
+            Ok(vec![out])
+        }
+        "yara" => {
+            let rules = crate::settings::current().yara_rules;
+            if rules.trim().is_empty() || !Path::new(rules.trim()).exists() {
+                bail!("choose a YARA rules folder in Settings › Add-ons");
+            }
+            let o = cmd.args(["scan", "--recursive"]).arg(rules.trim()).arg(src).output()?;
+            let text = String::from_utf8_lossy(&o.stdout).into_owned();
+            let hits = text.lines().filter(|l| !l.trim().is_empty()).count();
+            if !o.status.success() && hits == 0 {
+                bail!("{}", String::from_utf8_lossy(&o.stderr).lines().find(|l| !l.trim().is_empty()).unwrap_or("yara failed"));
+            }
+            note(&format!("{}: {hits} YARA rule{} matched", name(src), if hits == 1 { "" } else { "s" }));
+            if hits == 0 {
+                return Ok(vec![]);
+            }
+            let out = out_path(src, Some("yara"), "txt");
+            std::fs::write(&out, text)?;
             Ok(vec![out])
         }
         "capa" | "floss" => {

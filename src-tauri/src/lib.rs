@@ -19,14 +19,49 @@ mod winrt;
 use std::sync::Mutex;
 use tauri::{Manager, RunEvent};
 
-/// Appends a line to %TEMP%\shiftdrop.log (debug builds only).
+/// Where the log lives: %LOCALAPPDATA%\ShiftDrop\logs (kept on this PC, never sent anywhere).
+pub fn log_dir() -> std::path::PathBuf {
+    std::env::var_os("LOCALAPPDATA").map(std::path::PathBuf::from).unwrap_or_else(std::env::temp_dir).join("ShiftDrop").join("logs")
+}
+
+/// Appends a timestamped line to the log; the file is rotated at 1 MB.
 pub fn log(msg: &str) {
-    if cfg!(debug_assertions) {
-        use std::io::Write;
-        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(std::env::temp_dir().join("shiftdrop.log")) {
-            let _ = writeln!(f, "{:?} {msg}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis());
-        }
+    use std::io::Write;
+    static LOCK: Mutex<()> = Mutex::new(());
+    let _g = LOCK.lock();
+    let dir = log_dir();
+    let _ = std::fs::create_dir_all(&dir);
+    let file = dir.join("shiftdrop.log");
+    if std::fs::metadata(&file).map(|m| m.len() > 1 << 20).unwrap_or(false) {
+        let _ = std::fs::rename(&file, dir.join("shiftdrop.old.log"));
     }
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(file) {
+        let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs();
+        let _ = writeln!(f, "{secs} {msg}");
+    }
+}
+
+/// Opens the log folder in Explorer.
+#[tauri::command]
+fn open_logs() -> Result<(), String> {
+    let dir = log_dir();
+    let _ = std::fs::create_dir_all(&dir);
+    std::process::Command::new("explorer").arg(dir).spawn().map(|_| ()).map_err(|e| e.to_string())
+}
+
+/// Opens a new GitHub issue with the app and Windows versions filled in. Nothing is sent by
+/// the app itself; the user reviews the text in the browser before submitting.
+#[tauri::command]
+fn report_bug(app: tauri::AppHandle, context: Option<String>) -> Result<(), String> {
+    let version = app.package_info().version.to_string();
+    let build = std::process::Command::new("cmd").args(["/C", "ver"]).output().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default();
+    let message = context.map(|c| format!("**Message**\n```\n{c}\n```\n\n")).unwrap_or_default();
+    let body = format!(
+        "**What happened**\n\n\n**What you expected**\n\n\n**Steps**\n1. \n\n{message}**Version** ShiftDrop {version}, {build}\n\n_Settings › Report a problem › Open log folder has a log you can attach (it contains file names)._"
+    );
+    let enc = |s: &str| s.bytes().map(|b| if b.is_ascii_alphanumeric() || b"-_.~".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") }).collect::<String>();
+    let url = format!("https://github.com/nhaajtt/shiftdrop/issues/new?title={}&body={}", enc("Bug: "), enc(&body));
+    engines::security::open_url(&url).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -131,6 +166,7 @@ fn opened_with(app: &tauri::AppHandle, argv: Vec<String>) {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     std::panic::set_hook(Box::new(|p| log(&format!("panic: {p}"))));
+    log(&format!("start {}", env!("CARGO_PKG_VERSION")));
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, argv, _| opened_with(app, argv)))
         .plugin(tauri_plugin_drag::init())
@@ -140,6 +176,8 @@ pub fn run() {
         .manage(settings::Store(Mutex::new(settings::Settings::default())))
         .invoke_handler(tauri::generate_handler![
             ui_log,
+            open_logs,
+            report_bug,
             apps::get_apps,
             apps::open_with,
             settings::get_settings,
@@ -197,6 +235,12 @@ pub fn run() {
                         windows::overlay_pointer(&h, 1000, 600, true);
                     }
                 });
+            }
+            #[cfg(debug_assertions)]
+            if let Ok(v) = std::env::var("SHIFTDROP_EDIT") {
+                if let Some((tool, path)) = v.split_once('|') {
+                    let _ = windows::open_editor(handle.clone(), path.into(), tool.into());
+                }
             }
             #[cfg(debug_assertions)]
             if let Ok(v) = std::env::var("SHIFTDROP_HUB") {

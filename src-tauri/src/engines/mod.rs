@@ -1,5 +1,6 @@
 pub mod ai;
 pub mod dev;
+pub mod docx;
 pub mod files;
 pub mod image;
 pub mod imagex;

@@ -1,7 +1,5 @@
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { timedReveal } from './effects/reveal.js';
-import { signalPreset } from './effects/timing';
 import { initTheme } from './theme.js';
 
 initTheme();
@@ -15,7 +13,7 @@ const controls = $('controls');
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 
 $('file').textContent = path.split(/[\\/]/).pop();
-$('tool').textContent = `[${{ crop: 'Crop', addbg: 'Add BG', redact: 'Redact', trim: 'Trim', pages: 'Pages', sign: 'Sign' }[toolName] || toolName}]`;
+$('tool').textContent = `${{ crop: 'Crop', addbg: 'Add BG', redact: 'Redact', trim: 'Trim', pages: 'Pages', sign: 'Sign' }[toolName] || toolName}`;
 
 function h(tag, attrs = {}, ...kids) {
   const e = document.createElement(tag);
@@ -530,11 +528,4 @@ $('cancel').addEventListener('click', () => win.close());
 addEventListener('keydown', (e) => {
   if (e.key === 'Escape') win.close();
   if (e.key === 'Enter' && !(e.target instanceof HTMLButtonElement)) save();
-});
-
-// First appearance: a different long reveal per region (header 4 s, panel 4 s, stage 5 s).
-requestAnimationFrame(() => {
-  timedReveal($('top'), 'decode', 4000, { x: 0, y: 0 });
-  timedReveal($('panel'), signalPreset, 4000);
-  timedReveal(stage, 'dither', 5000);
 });

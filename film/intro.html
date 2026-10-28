@@ -226,17 +226,20 @@ function setToast(running, done, p, count) {
 }
 
 // --- camera: from a three-quarter view of the monitor into the screen, and back out at the end
-const FAR = { z: -3300, ry: -26, rx: 7, x: 260, y: -120 };
+// ?v renders for the 9:16 cut: centred shots, toast in the middle, no closing title
+const V = location.search.includes('v');
+const FAR = { z: -3300, ry: -26, rx: 7, x: V ? 0 : 260, y: -120 };
 function camera(t) {
   // in: 0–0.8 hold, 0.8–2.6 dolly in; out: 26.4–28.6
   const k = t < 20 ? 1 - ease(seg(t, 0.8, 2.6)) : ease(seg(t, 26.4, 28.6));
   const drift = t < 3 ? (1 - seg(t, 0, 2.6)) * 0.6 : 0;
   // the closing shot leaves room on the left for the title
-  const P = t < 20 ? FAR : { z: -3600, ry: -30, rx: 6, x: 620, y: -60 };
+  const P = t < 20 || V ? FAR : { z: -3600, ry: -30, rx: 6, x: 620, y: -60 };
   const z = lerp(0, P.z, k), ry = lerp(0, P.ry + drift * 4, k), rx = lerp(0, P.rx, k);
   const x = lerp(0, P.x, k), y = lerp(0, P.y, k);
   // a slow, breathing push while working on the desktop, like a handheld camera
-  const live = k < 0.001 ? 1 + 0.025 * Math.sin(t / 3.2) : 1;
+  // never below 1, so the bezel never shows at the edges
+  const live = 1 + (1 - k) * (0.03 + 0.02 * Math.sin(t / 3.2));
   $('rig').style.transform = `translate3d(${x}px, ${y}px, ${z}px) rotateX(${rx}deg) rotateY(${ry}deg) scale(${live})`;
   $('glare').style.opacity = k;
   return k;
@@ -244,7 +247,7 @@ function camera(t) {
 
 function render(t) {
   const k = camera(t);
-  $('end').style.opacity = out(seg(t, 27.6, 28.6));
+  $('end').style.opacity = V ? 0 : out(seg(t, 27.6, 28.6));
   $('end').style.transform = `translateX(${lerp(-30, 0, out(seg(t, 27.6, 28.8)))}px)`;
 
   let cur = [1700, 860], wheelOpen = 0, wheelAt = null, ghost = null, shift = 0, nkey = 0, toast = 0, hi = -1, hj = -1, sel = null;
@@ -343,6 +346,7 @@ function render(t) {
   $('toast').style.opacity = toast;
   $('toast').style.transform = `translateY(${lerp(20, 0, out(toast))}px)`;
 }
+if (V) Object.assign($('toast').style, { right: 'auto', left: '770px' });
 window.render = render;
 document.fonts.ready.then(() => { render(0); window.ready = true; });
 </script>

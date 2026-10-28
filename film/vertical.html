@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>ShiftDrop 9:16</title>
+<link rel="stylesheet" href="../node_modules/@fontsource-variable/inter/index.css" />
+<link rel="stylesheet" href="../node_modules/@fontsource-variable/jetbrains-mono/index.css" />
+<style>
+  html, body { margin: 0; width: 1080px; height: 1920px; overflow: hidden; font-family: 'Inter Variable', sans-serif; color: #0d1230; }
+  body { background: radial-gradient(90% 50% at 10% 0%, #c7d7ff, transparent 70%), radial-gradient(90% 50% at 100% 100%, #dccbff, transparent 70%), #eef1fd; }
+  #cap { position: absolute; left: 70px; right: 70px; top: 190px; height: 300px; display: flex; flex-direction: column; justify-content: flex-end; }
+  #cap h2 { font-size: 78px; line-height: 1.04; letter-spacing: -0.035em; margin: 0; font-weight: 800; }
+  #cap h2 span { background: linear-gradient(90deg, #3d6fff, #8b5cf6); -webkit-background-clip: text; color: transparent; }
+  #cap p { font-size: 34px; color: rgb(13 18 48 / .62); margin: 18px 0 0; }
+  #view { position: absolute; left: 0; top: 560px; width: 1080px; height: 1080px; overflow: hidden; background: #e9edf7; }
+  #film { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; border: 0; transform-origin: 0 0; }
+  #foot { position: absolute; left: 70px; right: 70px; bottom: 120px; display: flex; align-items: center; gap: 22px; }
+  .mark { width: 84px; height: 84px; border-radius: 24px; display: grid; place-items: center; font-size: 46px; color: #fff; background: linear-gradient(135deg, #4f8bff, #8b5cf6); box-shadow: 0 16px 40px rgb(60 60 180 / .3); }
+  #foot b { display: block; font-size: 44px; letter-spacing: -0.02em; }
+  #foot span { font: 600 28px 'JetBrains Mono Variable', monospace; color: #4b55e6; }
+</style>
+</head>
+<body>
+<div id="cap"></div>
+<div id="view"><iframe id="film" src="intro.html?v"></iframe></div>
+<div id="foot"><div class="mark">⇄</div><div><b>ShiftDrop</b><span>shiftdrop.nhaajt.com</span></div></div>
+<script>
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+const seg = (t, a, b) => clamp((t - a) / (b - a));
+const ease = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+const lerp = (a, b, x) => a + (b - a) * x;
+const CAPS = [
+  [0, 'Shift + drag <span>any file.</span>', 'A wheel of actions opens around it'],
+  [10.6, 'Copy the text <span>out of PDFs.</span>', 'Number keys pick a wedge'],
+  [17.8, 'Shrink videos <span>to 8 MB.</span>', 'Ready for Discord, Zalo, email'],
+  [26.4, 'Free. Offline. <span>For Windows.</span>', '50+ actions for images, video, PDF and more'],
+];
+const film = document.getElementById('film');
+const cap = document.getElementById('cap');
+function render(t) {
+  // follow the intro's camera: whole monitor when far, a centred square of the desktop when close
+  const k = t < 20 ? 1 - ease(seg(t, 0.8, 2.6)) : ease(seg(t, 26.4, 28.6));
+  const s = lerp(1, 1080 / 1920, k);
+  film.style.transform = `translate(${lerp(-420, 0, k)}px, ${(1080 - 1080 * s) / 2}px) scale(${s})`;
+  film.contentWindow.render(t);
+  const [, h, p] = [...CAPS].reverse().find(([at]) => t >= at);
+  const html = `<h2>${h}</h2><p>${p}</p>`;
+  if (cap.innerHTML !== html) cap.innerHTML = html;
+  // captions fade in when they change
+  const start = [...CAPS].reverse().find(([at]) => t >= at)[0];
+  cap.style.opacity = seg(t, start, start + 0.4);
+  cap.style.transform = `translateY(${lerp(16, 0, seg(t, start, start + 0.5))}px)`;
+}
+window.render = render;
+film.addEventListener('load', () => {
+  const wait = () => (film.contentWindow.ready ? (render(0), (window.ready = true)) : setTimeout(wait, 50));
+  wait();
+});
+</script>
+</body>
+</html>

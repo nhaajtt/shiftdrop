@@ -1,0 +1,50 @@
+# Checks that every push builds. Releases are built and signed locally, so no signing key
+# is stored on GitHub.
+name: CI
+
+on:
+  push:
+    branches: [master]
+    paths-ignore: ['website/**', 'docs/**', 'film/**', '**.md']
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install
+        run: npm ci
+
+      - name: Build web UI
+        run: npm run build
+
+      - name: PDF engine
+        shell: pwsh
+        run: ./scripts/fetch-pdfium.ps1
+
+      - name: FFmpeg for the engine tests
+        run: choco install ffmpeg -y --no-progress
+
+      - name: Check
+        working-directory: src-tauri
+        run: cargo check --locked
+
+      - name: Engine tests
+        working-directory: src-tauri
+        run: cargo test --lib --locked

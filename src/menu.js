@@ -233,6 +233,7 @@ function officeMenu(e) {
   const items = [{ ...to('pdf', 'PDF'), glyph: '⇄' }];
   if (words) items.push({ ...to('txt', 'Text'), glyph: 'T' });
   if (e !== 'docx' && words) items.push({ ...to('docx', 'DOCX'), glyph: 'W' });
+  if (e === 'docx') items.push({ ...to('md', 'Markdown'), glyph: 'M' });
   return { center: to('pdf'), items, extra: common() };
 }
 
@@ -354,6 +355,7 @@ function exeMenu(multi, apps) {
     ctx.sandbox && { label: 'Sandbox', glyph: '◫', title: 'Opening in Windows Sandbox', action: { op: 'sandbox' }, keywords: 'run safely isolated' },
     !multi && { label: 'Capabilities', glyph: '⌬', title: 'Running capa', action: { op: 'tool', tool: 'capa' }, keywords: 'capa mandiant behaviour' },
     !multi && { label: 'Hidden strings', glyph: '≡', title: 'Running FLOSS', action: { op: 'tool', tool: 'floss' }, keywords: 'floss obfuscated strings' },
+    !multi && { label: 'YARA scan', glyph: '⌖', title: 'Scanning with YARA', action: { op: 'tool', tool: 'yara' }, keywords: 'yara rules malware detect' },
     !multi && { label: 'Unpack UPX', glyph: '⇪', title: 'Unpacking', action: { op: 'tool', tool: 'upx' }, keywords: 'upx packer' },
     ...common(),
   ].filter(Boolean);

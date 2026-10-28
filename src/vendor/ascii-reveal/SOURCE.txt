@@ -1,1 +1,0 @@
-Source: https://github.com/quanhoangindex/ascii-reveal (commit f602e20, v0.3.0), MIT License.

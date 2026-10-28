@@ -12,7 +12,8 @@ kind of file: convert, compress, crop, sign, transcribe, check, share. Everythin
 [**Download for Windows**](https://github.com/nhaajtt/shiftdrop/releases/latest) ·
 [Website](https://shiftdrop.nhaajt.com) ·
 [Watch the intro](docs/media/intro.mp4) ·
-[Full tour](docs/media/demo.mp4)
+[Full tour](docs/media/demo.mp4) ·
+[Vertical cut](docs/media/vertical.mp4)
 
 <img src="docs/media/demo.gif" width="760" alt="Dragging a photo with Shift held opens a round menu; dropping it on PNG converts the file" />
 
@@ -28,6 +29,14 @@ kind of file: convert, compress, crop, sign, transcribe, check, share. Everythin
 
 Prefer the keyboard? While the wheel is open, press **1–8** to pick a wedge, **Esc** to cancel.
 Everything else is one search away under **More**.
+
+## Screenshots
+
+| Every action, searchable | Settings and add-ons |
+|---|---|
+| <img src="docs/media/screens/actions.jpg" alt="The ShiftDrop window listing every action for a photo" /> | <img src="docs/media/screens/settings.jpg" alt="Settings with language, quick look and add-ons" /> |
+| **First launch** | **Editors** (crop, background, redact, trim, PDF pages, signature) |
+| <img src="docs/media/screens/welcome.jpg" alt="Welcome screen explaining the Shift + drag gesture" /> | <img src="docs/media/screens/editor.jpg" alt="Crop editor with aspect presets" /> |
 
 ## What it can do
 

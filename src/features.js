@@ -14,6 +14,8 @@ settingsSections.push(async (s) => {
     ai: ['AI images', 'Background removal and face blurring, on this PC (≈180 MB)'],
     upscale: ['Upscaling', 'Real-ESRGAN, sharp 2× and 4× enlargements; needs a Vulkan graphics card (≈45 MB)'],
     ffmpeg: ['FFmpeg', 'Needed for every video and audio action (official Windows build, ≈90 MB)'],
+    yara: ['YARA-X', 'Scan programs with your own YARA rules (VirusTotal’s YARA-X)'],
+    qpdf: ['qpdf', 'PDF passwords: protect and unlock'],
     whisper: ['Speech to text', 'Subtitles from speech, offline (whisper.cpp + 150 MB model)'],
   };
   for (const t of tools) {
@@ -32,6 +34,9 @@ settingsSections.push(async (s) => {
     };
     card.append(h('div', { class: 'field' }, h('div', { class: 'what' }, label, h('small', {}, `${hint}. Downloaded from its official GitHub release.`)), btn));
   }
+  const rules = h('input', { type: 'text', value: s.yara_rules || '', placeholder: 'Folder with .yar rules, e.g. C:\\Tools\\rules', style: 'flex:1' });
+  rules.onchange = () => settings.set({ yara_rules: rules.value.trim().replace(/^"|"$/g, '') });
+  card.append(h('label', { class: 'field' }, h('div', { class: 'what' }, 'YARA rules', h('small', {}, 'Used by YARA scan on programs.')), rules));
   const sandbox = await invoke('sandbox_ok');
   card.append(
     h('div', { class: 'field' }, h('div', { class: 'what' }, 'Windows Sandbox', h('small', {}, sandbox ? 'Available: programs can be opened in a throwaway sandbox.' : 'Not available on this PC (needs Windows Pro or Enterprise with the feature turned on).')), h('span', { class: `tag ${sandbox ? 'ok' : ''}` }, sandbox ? 'ready' : 'off')),
@@ -170,3 +175,17 @@ settingsSections.push(async () => {
   };
   return h('div', { class: 'card glass' }, h('div', { class: 'field' }, h('div', { class: 'what' }, 'Updates', h('small', {}, 'Updates are signed; only releases from the official repository are accepted.')), status, btn));
 });
+
+settingsSections.push(async () =>
+  h(
+    'div',
+    { class: 'card glass' },
+    h(
+      'div',
+      { class: 'field' },
+      h('div', { class: 'what' }, 'Report a problem', h('small', {}, 'Opens a GitHub issue with your app and Windows version filled in. You see everything before it is sent.')),
+      h('button', { class: 'btn', onclick: () => invoke('open_logs') }, 'Open log folder'),
+      h('button', { class: 'btn', onclick: () => invoke('report_bug', { context: null }) }, 'Report'),
+    ),
+  ),
+);

@@ -27,6 +27,8 @@ pub struct Settings {
     pub r2_bucket: String,
     /// public base URL of the bucket (r2.dev or a custom domain)
     pub r2_public: String,
+    /// folder of .yar rules for the YARA scan
+    pub yara_rules: String,
 }
 
 /// A folder whose new files get a recipe automatically.
@@ -64,6 +66,7 @@ impl Settings {
             r2_secret: String::new(),
             r2_bucket: String::new(),
             r2_public: String::new(),
+            yara_rules: String::new(),
         }
     }
 

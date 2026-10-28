@@ -14,6 +14,9 @@ const NEED: &str = "Office documents need Microsoft Office or the free LibreOffi
 pub fn run(src: &Path, action: &Action, progress: Progress) -> Result<Vec<PathBuf>> {
     let Action::Convert { to } = action else { bail!("not available for documents") };
     progress(0.1);
+    if to == "md" && ext(src) == "docx" {
+        return super::docx::to_markdown(src).map(|p| vec![p]);
+    }
     let input = if matches!(ext(src).as_str(), "md" | "markdown" | "txt" | "csv") {
         // Markdown etc. go through HTML so headings, lists and tables survive
         let html = temp_file("html");
