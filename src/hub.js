@@ -9,6 +9,7 @@ import { addView, h, name, settings, settingsSections, shared, toggle, views } f
 import './features.js';
 import './recipes.js';
 import './share-ui.js';
+import './welcome.js';
 
 initTheme();
 

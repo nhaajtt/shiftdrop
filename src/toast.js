@@ -1,6 +1,8 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { startDrag } from '@crabnebula/tauri-plugin-drag';
+import { relaunch } from '@tauri-apps/plugin-process';
+import { check } from '@tauri-apps/plugin-updater';
 import { initTheme } from './theme.js';
 
 initTheme();
@@ -58,6 +60,7 @@ function scheduleHide(ms) {
 }
 
 listen('job', ({ payload: u }) => {
+  document.body.classList.remove('update');
   jobs.set(u.id, u);
   const current = jobs.get(shown);
   // keep showing a running job until it finishes; then move on to the newest
@@ -103,3 +106,52 @@ $('close').addEventListener('click', () => {
 });
 document.body.addEventListener('pointerenter', () => (hovering = true));
 document.body.addEventListener('pointerleave', () => (hovering = false));
+
+// --- updates: checked shortly after start and then once a day; never installed without a click
+
+const DAY = 24 * 60 * 60 * 1000;
+let pending = null;
+
+async function checkForUpdate() {
+  if (import.meta.env.DEV) return;
+  try {
+    const update = await check();
+    if (!update) return;
+    // "Later" quiets this version for three days
+    const later = JSON.parse(localStorage.getItem('shiftdrop.later') || '{}');
+    if (later.version === update.version && Date.now() - later.at < 3 * DAY) return;
+    if ([...jobs.values()].some((j) => j.state === 'running')) return setTimeout(checkForUpdate, 60000);
+    pending = update;
+    document.body.classList.add('update');
+    $('state').textContent = 'Update';
+    $('state').className = 'tag';
+    $('title').textContent = `ShiftDrop ${update.version} is ready to install`;
+    clearTimeout(hideTimer);
+    invoke('toast_show');
+  } catch {
+    // offline or GitHub unreachable: try again tomorrow
+  }
+}
+
+$('later').addEventListener('click', () => {
+  if (pending) localStorage.setItem('shiftdrop.later', JSON.stringify({ version: pending.version, at: Date.now() }));
+  document.body.classList.remove('update');
+  invoke('toast_hide');
+});
+
+$('install').addEventListener('click', async () => {
+  if (!pending) return;
+  $('install').disabled = $('later').disabled = true;
+  $('install').textContent = 'Installing…';
+  try {
+    await pending.downloadAndInstall();
+    await relaunch();
+  } catch (e) {
+    $('updnote').textContent = String(e);
+    $('install').disabled = $('later').disabled = false;
+    $('install').textContent = 'Install';
+  }
+});
+
+setTimeout(checkForUpdate, 20000);
+setInterval(checkForUpdate, DAY);

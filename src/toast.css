@@ -179,3 +179,30 @@ footer {
     animation: none;
   }
 }
+
+/* "a new version is ready" card */
+#upd {
+  display: none;
+  align-items: center;
+  gap: 8px;
+}
+
+#upd .label {
+  flex: 1;
+}
+
+body.update #upd {
+  display: flex;
+}
+
+body.update .bar,
+body.update footer,
+body.update #error {
+  display: none;
+}
+
+#install {
+  background: var(--grad);
+  color: #fff;
+  border-color: transparent;
+}

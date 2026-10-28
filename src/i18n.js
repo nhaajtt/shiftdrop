@@ -63,6 +63,7 @@ const VI = {
 // Titles with numbers or names in them.
 const RULES = [
   [/^(\d+) of (\d+) saved$/, '$1/$2 đã lưu'],
+  [/^ShiftDrop (.+) is ready to install$/, 'ShiftDrop $1 đã sẵn sàng để cài'],
   [/^\+(\d+) queued$/, '+$1 đang chờ'],
   [/^Converting to (.+)$/, 'Đang chuyển sang $1'], [/^Converted to (.+)$/, 'Đã chuyển sang $1'],
   [/^Resizing to (.+)$/, 'Đang đổi cỡ $1'], [/^Rotating (.+)$/, 'Đang xoay $1'], [/^Fitting into (.+)$/, 'Đang nén vừa $1'],

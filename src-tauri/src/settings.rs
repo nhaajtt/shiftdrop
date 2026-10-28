@@ -129,6 +129,11 @@ fn file(app: &AppHandle) -> Option<PathBuf> {
     app.path().app_config_dir().ok().map(|d| d.join("settings.json"))
 }
 
+/// True before the settings file has ever been written (first launch).
+pub fn first_run(app: &AppHandle) -> bool {
+    file(app).is_some_and(|p| !p.exists())
+}
+
 pub fn load(app: &AppHandle) -> Settings {
     file(app)
         .and_then(|p| fs::read_to_string(p).ok())

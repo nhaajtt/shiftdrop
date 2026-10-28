@@ -135,6 +135,11 @@ pub fn show_toast(app: &AppHandle) {
 }
 
 #[tauri::command]
+pub fn toast_show(app: AppHandle) {
+    show_toast(&app);
+}
+
+#[tauri::command]
 pub fn toast_hide(app: AppHandle) {
     if let Some(w) = app.get_webview_window("toast") {
         let _ = w.hide();

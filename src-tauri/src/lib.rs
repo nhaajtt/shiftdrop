@@ -102,6 +102,11 @@ fn start_drag_watch(app: tauri::AppHandle) {
     });
 }
 
+fn autostart_on_first_run(app: &tauri::AppHandle) -> Result<(), String> {
+    use tauri_plugin_autostart::ManagerExt;
+    app.autolaunch().enable().map_err(|e| e.to_string())
+}
+
 /// Files passed with `--open` (Explorer's right-click entry). Explorer may start one process per
 /// selected file, so paths arriving within a moment are gathered into one hub window.
 fn opened_with(app: &tauri::AppHandle, argv: Vec<String>) {
@@ -146,6 +151,7 @@ pub fn run() {
             windows::open_editor,
             windows::overlay_hide,
             windows::toast_hide,
+            windows::toast_show,
             windows::open_hub,
             windows::hub_take,
             engines::security::tools_status,
@@ -170,6 +176,7 @@ pub fn run() {
         ])
         .setup(|app| {
             let handle = app.handle().clone();
+            let first = settings::first_run(&handle);
             settings::update(&handle, |s| *s = settings::load(&handle));
             engines::tools::set_bin_dir(bin_dir(app));
             app.manage(jobs::start(handle.clone()));
@@ -197,6 +204,11 @@ pub fn run() {
                 let _ = windows::open_hub(handle.clone(), files, v, None);
             }
             watch::start(handle.clone());
+            if first {
+                // first launch: the app lives in the tray, so say hello and show how it works
+                let _ = autostart_on_first_run(&handle);
+                let _ = windows::open_hub(handle.clone(), vec![], "welcome".into(), None);
+            }
             opened_with(&handle, std::env::args().collect());
             start_drag_watch(handle);
             Ok(())

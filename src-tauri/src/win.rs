@@ -133,10 +133,36 @@ unsafe extern "system" fn key_proc(code: i32, wparam: WPARAM, lparam: LPARAM) ->
     CallNextHookEx(std::ptr::null_mut(), code, wparam, lparam)
 }
 
+/// Every click and key on the PC passes through the hooks, so they must never be slowed down.
+/// Windows 11 puts tray apps into "Efficiency mode" (low priority, efficiency cores), which made
+/// the whole system's mouse stutter (e.g. right-click menus); opt out for the process and give
+/// the hook thread top priority.
+unsafe fn keep_fast() {
+    use windows_sys::Win32::System::Threading::{
+        GetCurrentProcess, GetCurrentThread, SetProcessInformation, SetThreadInformation, SetThreadPriority, ProcessPowerThrottling,
+        ThreadPowerThrottling, PROCESS_POWER_THROTTLING_CURRENT_VERSION, PROCESS_POWER_THROTTLING_EXECUTION_SPEED, PROCESS_POWER_THROTTLING_STATE,
+        THREAD_POWER_THROTTLING_CURRENT_VERSION, THREAD_POWER_THROTTLING_EXECUTION_SPEED, THREAD_POWER_THROTTLING_STATE, THREAD_PRIORITY_TIME_CRITICAL,
+    };
+    let p = PROCESS_POWER_THROTTLING_STATE {
+        Version: PROCESS_POWER_THROTTLING_CURRENT_VERSION,
+        ControlMask: PROCESS_POWER_THROTTLING_EXECUTION_SPEED,
+        StateMask: 0,
+    };
+    SetProcessInformation(GetCurrentProcess(), ProcessPowerThrottling, &p as *const _ as _, std::mem::size_of_val(&p) as u32);
+    let t = THREAD_POWER_THROTTLING_STATE {
+        Version: THREAD_POWER_THROTTLING_CURRENT_VERSION,
+        ControlMask: THREAD_POWER_THROTTLING_EXECUTION_SPEED,
+        StateMask: 0,
+    };
+    SetThreadInformation(GetCurrentThread(), ThreadPowerThrottling, &t as *const _ as _, std::mem::size_of_val(&t) as u32);
+    SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL);
+}
+
 /// Installs the low-level mouse hook on its own thread (it needs a message loop).
 pub fn start_hook(tx: Sender<HookEvent>) {
     let _ = TX.set(tx);
     std::thread::spawn(|| unsafe {
+        keep_fast();
         let hook = SetWindowsHookExW(WH_MOUSE_LL, Some(mouse_proc), GetModuleHandleW(std::ptr::null()), 0);
         if hook.is_null() {
             crate::log("mouse hook failed");
