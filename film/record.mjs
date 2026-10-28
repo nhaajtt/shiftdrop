@@ -2,18 +2,20 @@
 // encodes the frames with ffmpeg. Every frame is drawn from its timestamp, so the video
 // is perfectly smooth regardless of machine speed.
 //
-//   node film/record.mjs [seconds=40] [fps=30]
+//   node film/record.mjs [seconds=40] [fps=30] [page=film]
 
 import { spawn, spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const SECONDS = Number(process.argv[2] || 40);
 const FPS = Number(process.argv[3] || 30);
+const PAGE = process.argv[4] || 'film';
+const BASE = PAGE === 'film' ? 'demo' : PAGE;
 const PORT = 9333;
-const frames = join(here, 'frames');
+const frames = join(here, 'frames', PAGE);
 const media = resolve(here, '..', 'docs', 'media');
 
 const edge = ['ProgramFiles(x86)', 'ProgramFiles']
@@ -21,7 +23,9 @@ const edge = ['ProgramFiles(x86)', 'ProgramFiles']
   .find((p) => p && existsSync(p));
 if (!edge) throw new Error('Microsoft Edge not found');
 
-rmSync(frames, { recursive: true, force: true });
+// empty the folder rather than removing it (Windows keeps folders busy while a shell sits in them)
+mkdirSync(frames, { recursive: true });
+for (const f of readdirSync(frames)) rmSync(join(frames, f), { force: true });
 mkdirSync(frames, { recursive: true });
 mkdirSync(media, { recursive: true });
 
@@ -59,7 +63,7 @@ const send = (method, params = {}) =>
 
 await send('Emulation.setDeviceMetricsOverride', { width: 1920, height: 1080, deviceScaleFactor: 1, mobile: false });
 await send('Page.enable');
-await send('Page.navigate', { url: pathToFileURL(join(here, 'film.html')).href });
+await send('Page.navigate', { url: pathToFileURL(join(here, `${PAGE}.html`)).href });
 for (let i = 0; i < 100; i++) {
   const r = await send('Runtime.evaluate', { expression: 'window.ready === true', returnByValue: true });
   if (r.result.value) break;
@@ -94,10 +98,10 @@ const ff = (args) => {
   if (r.status !== 0) throw new Error(`ffmpeg failed: ${args.join(' ')}`);
 };
 const input = ['-framerate', String(FPS), '-i', join(frames, '%05d.jpg')];
-ff([...input, '-c:v', 'libx264', '-preset', 'slow', '-crf', '18', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', join(media, 'demo.mp4')]);
-ff([...input, '-c:v', 'libvpx-vp9', '-crf', '32', '-b:v', '0', '-row-mt', '1', join(media, 'demo.webm')]);
+ff([...input, '-c:v', 'libx264', '-preset', 'slow', '-crf', '18', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', join(media, `${BASE}.mp4`)]);
+ff([...input, '-c:v', 'libvpx-vp9', '-crf', '32', '-b:v', '0', '-row-mt', '1', join(media, `${BASE}.webm`)]);
 // poster: the wheel open with the PNG option highlighted
-copyFileSync(join(frames, `${String(Math.round(8.5 * FPS)).padStart(5, '0')}.jpg`), join(media, 'poster.jpg'));
+copyFileSync(join(frames, `${String(Math.round(8.5 * FPS)).padStart(5, '0')}.jpg`), join(media, BASE === 'demo' ? 'poster.jpg' : `${BASE}-poster.jpg`));
 // a light GIF of the first scene for the README
-ff(['-ss', '3.6', '-t', '9.6', ...input, '-vf', 'fps=15,scale=760:-1:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4', join(media, 'demo.gif')]);
+if (BASE === 'demo') ff(['-ss', '3.6', '-t', '9.6', ...input, '-vf', 'fps=15,scale=760:-1:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4', join(media, 'demo.gif')]);
 console.log('written to', media);

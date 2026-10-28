@@ -1,0 +1,350 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>ShiftDrop intro</title>
+<link rel="stylesheet" href="../node_modules/@fontsource-variable/inter/index.css" />
+<link rel="stylesheet" href="../node_modules/@fontsource-variable/jetbrains-mono/index.css" />
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; font-family: 'Segoe UI Variable Text', 'Segoe UI', 'Inter Variable', sans-serif; }
+  #studio { position: absolute; inset: 0; background: radial-gradient(120% 90% at 50% 35%, #ffffff 0%, #eef0f6 55%, #d9dce6 100%); }
+  #world { position: absolute; inset: 0; perspective: 2600px; perspective-origin: 50% 45%; }
+  #rig { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-style: preserve-3d; transform-origin: 960px 540px; }
+
+  /* the monitor: the screen is exactly the 1920×1080 frame, everything else sits around it */
+  #bezel { position: absolute; left: -30px; top: -30px; width: 1980px; height: 1140px; border-radius: 26px; background: #0b0c10;
+    box-shadow: inset 0 0 0 2px #2a2c33, 0 0 0 3px #b9bcc6, 0 0 0 5px #8e929e; }
+  #side { position: absolute; left: 1950px; top: -30px; width: 46px; height: 1140px; background: linear-gradient(90deg, #a8acb8, #d7d9e0); transform-origin: 0 50%; transform: rotateY(90deg); border-radius: 0 10px 10px 0; }
+  #neck { position: absolute; left: 810px; top: 1110px; width: 300px; height: 520px; background: linear-gradient(90deg, #b7bac4, #e9eaef 45%, #c3c6cf); transform: translateZ(-120px); }
+  #base { position: absolute; left: 560px; top: 1600px; width: 800px; height: 46px; border-radius: 14px; background: linear-gradient(#eceef2, #b9bcc5); transform: translateZ(-120px); box-shadow: 0 40px 80px rgb(0 0 0 / .25); }
+  #floorshadow { position: absolute; left: 260px; top: 1640px; width: 1400px; height: 120px; border-radius: 50%; background: radial-gradient(closest-side, rgb(0 0 0 / .22), transparent); filter: blur(10px); transform: translateZ(-160px); }
+  #glare { position: absolute; inset: 0; pointer-events: none; background: linear-gradient(115deg, rgb(255 255 255 / .16) 0%, rgb(255 255 255 / 0) 38%); z-index: 50; }
+
+  /* ---------- Windows 11 desktop ---------- */
+  #screen { position: absolute; inset: 0; overflow: hidden; background: #c9dcff; }
+  #wall { position: absolute; inset: -40px; background:
+      radial-gradient(60% 70% at 62% 58%, #1c5be6 0%, rgb(28 91 230 / .0) 60%),
+      radial-gradient(40% 45% at 52% 52%, #6fb2ff 0%, rgb(111 178 255 / 0) 70%),
+      conic-gradient(from 210deg at 58% 56%, #0d3fb8, #4c8dff, #a9cdff, #e8f1ff, #9cc2ff, #2f6cf2, #0d3fb8),
+      #dfe9ff; filter: blur(30px) saturate(1.15); }
+  #wall::after { content: ''; position: absolute; inset: 0; background: radial-gradient(70% 60% at 20% 10%, rgb(255 255 255 / .55), transparent 60%); }
+
+  .dicon { position: absolute; width: 112px; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px 4px 6px; border-radius: 6px;
+    color: #fff; font-size: 15.5px; text-align: center; text-shadow: 0 1px 3px rgb(0 0 0 / .6); line-height: 1.25; }
+  .dicon.sel { background: rgb(160 200 255 / .35); box-shadow: inset 0 0 0 1px rgb(200 225 255 / .55); }
+  .dicon .art { width: 64px; height: 64px; position: relative; display: grid; place-items: center; }
+  .page { width: 50px; height: 62px; border-radius: 4px; background: #fff; box-shadow: 0 2px 4px rgb(0 0 0 / .25); position: relative; overflow: hidden; }
+  .page::before { content: ''; position: absolute; right: 0; top: 0; width: 14px; height: 14px; background: linear-gradient(225deg, #dfe3ea 50%, transparent 50%); }
+  .page i { position: absolute; left: 7px; right: 7px; height: 3px; border-radius: 2px; background: #d7dbe3; }
+  .badge { position: absolute; left: 4px; bottom: 6px; padding: 1px 4px; border-radius: 3px; font: 700 10px 'Segoe UI', sans-serif; color: #fff; }
+  .photo { width: 62px; height: 46px; border-radius: 4px; border: 2px solid #fff; box-shadow: 0 2px 5px rgb(0 0 0 / .3);
+    background: linear-gradient(#ff9a5a 0 40%, #ffcf6e 40% 46%, #2a7bd8 46% 100%); position: relative; }
+  .photo::after { content: ''; position: absolute; left: 34px; top: 7px; width: 13px; height: 13px; border-radius: 50%; background: #fff5c2; }
+  .film { width: 60px; height: 44px; border-radius: 5px; background: linear-gradient(135deg, #3a3550, #121019); box-shadow: 0 2px 5px rgb(0 0 0 / .35); display: grid; place-items: center; }
+  .film::after { content: ''; border-left: 14px solid #fff; border-top: 9px solid transparent; border-bottom: 9px solid transparent; margin-left: 4px; }
+  .bin { width: 46px; height: 56px; border-radius: 4px 4px 10px 10px; background: linear-gradient(90deg, #cfe3f7, #f4f9ff 50%, #c5dbf2); box-shadow: 0 2px 4px rgb(0 0 0 / .25); }
+
+  #taskbar { position: absolute; left: 0; right: 0; bottom: 0; height: 56px; background: rgb(238 242 250 / .82); backdrop-filter: blur(30px) saturate(1.6);
+    border-top: 1px solid rgb(255 255 255 / .6); display: flex; align-items: center; justify-content: center; gap: 6px; }
+  .tb { width: 44px; height: 44px; border-radius: 6px; display: grid; place-items: center; }
+  .tb.on { background: rgb(255 255 255 / .6); }
+  .win4 { width: 22px; height: 22px; display: grid; grid-template-columns: 1fr 1fr; gap: 2px; }
+  .win4 b { background: linear-gradient(135deg, #2f9bff, #0a5fd8); border-radius: 1px; }
+  .search { width: 20px; height: 20px; border: 2.5px solid #2b2f3a; border-radius: 50%; position: relative; }
+  .search::after { content: ''; position: absolute; width: 8px; height: 2.5px; background: #2b2f3a; right: -7px; bottom: -3px; transform: rotate(45deg); }
+  .folder { width: 26px; height: 20px; border-radius: 3px; background: linear-gradient(#ffd25a, #f4b400); position: relative; }
+  .folder::before { content: ''; position: absolute; left: 0; top: -4px; width: 11px; height: 6px; border-radius: 2px 2px 0 0; background: #f0a800; }
+  .globe { width: 24px; height: 24px; border-radius: 50%; background: conic-gradient(from 200deg, #1fa2ff, #12d8a5, #1fa2ff); box-shadow: inset 0 0 0 4px rgb(255 255 255 / .35); }
+  .gear { width: 22px; height: 22px; border-radius: 50%; border: 5px dotted #59606e; }
+  .sd { width: 26px; height: 26px; border-radius: 8px; background: linear-gradient(135deg, #4f8bff, #8b5cf6); color: #fff; font-size: 15px; display: grid; place-items: center; }
+  #tray { position: absolute; right: 14px; top: 0; height: 56px; display: flex; align-items: center; gap: 18px; font-size: 14px; color: #1d2230; }
+  #clock { text-align: right; line-height: 1.25; }
+
+  /* ShiftDrop: the wheel and the toast, as in the app */
+  #wheel { position: absolute; width: 460px; height: 460px; margin: -230px 0 0 -230px; opacity: 0; z-index: 20; }
+  #disc { position: absolute; left: 50%; top: 50%; border-radius: 50%; transform: translate(-50%, -50%);
+    background: rgb(246 247 252 / .5); backdrop-filter: blur(9px) saturate(1.9); border: 1px solid rgb(255 255 255 / .75);
+    box-shadow: 0 18px 50px rgb(0 0 0 / .28), 0 2px 8px rgb(0 0 0 / .14), inset 0 1px 0 rgb(255 255 255 / .6), inset 0 0 28px rgb(255 255 255 / .18); }
+  #wheel svg { position: absolute; inset: 0; overflow: visible; }
+  .seg { fill: rgb(255 255 255 / .08); stroke: rgb(20 30 70 / .16); stroke-width: 1; }
+  .seg.hot { fill: rgb(92 100 246 / .88); }
+  .glyph { font: 18px 'Inter Variable', sans-serif; fill: rgb(10 14 32 / .62); }
+  .name { font: 650 11.5px 'Inter Variable', sans-serif; fill: rgb(10 14 32 / .96); }
+  .num { font: 8.5px 'JetBrains Mono Variable', monospace; fill: rgb(10 14 32 / .5); }
+  .hot-l text { fill: #fff; }
+  .sub { font: 650 11px 'Inter Variable', sans-serif; fill: rgb(10 14 32 / .96); }
+  .core { fill: rgb(255 255 255 / .4); stroke: rgb(20 30 70 / .14); }
+  .clabel { font: 700 15px 'Inter Variable', sans-serif; fill: rgb(10 14 32 / .96); }
+  .chint { font: 10.5px 'Inter Variable', sans-serif; fill: rgb(10 14 32 / .6); }
+
+  #toast { position: absolute; right: 16px; bottom: 72px; width: 380px; padding: 12px 16px; border-radius: 16px; opacity: 0; z-index: 30; font-family: 'Inter Variable', sans-serif; color: #0e1330;
+    background: radial-gradient(120% 140% at 0% 0%, rgb(79 139 255 / .12), transparent 60%), rgb(250 251 255 / .95);
+    border: 1px solid rgb(20 30 80 / .12); box-shadow: inset 0 1px 0 #fff, 0 10px 28px -8px rgb(10 14 40 / .45); }
+  #toast header { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; }
+  #ttag { font: 10px 'JetBrains Mono Variable', monospace; color: #fff; padding: 2px 6px; border-radius: 6px; background: linear-gradient(90deg, #4f8bff, #8b5cf6); }
+  #ttag.done { background: #1f9d6b; }
+  .tbar { height: 5px; border-radius: 99px; background: rgb(20 30 80 / .1); margin: 10px 0 8px; overflow: hidden; }
+  #tfill { height: 100%; width: 0; background: linear-gradient(90deg, #4f8bff, #8b5cf6); }
+  #tfoot { display: flex; justify-content: space-between; font-size: 11px; color: rgb(14 19 48 / .6); }
+  #tfoot span:last-child b { font-weight: 600; color: #0e1330; margin-left: 8px; }
+
+  #ghost { position: absolute; opacity: 0; z-index: 25; }
+  #cursor { position: absolute; width: 26px; height: 36px; margin: -2px 0 0 -4px; z-index: 40; filter: drop-shadow(0 2px 3px rgb(0 0 0 / .4)); }
+  #keys { position: absolute; left: 50%; bottom: 110px; display: flex; gap: 12px; transform: translateX(-50%); z-index: 45; }
+  .key { min-width: 78px; height: 54px; padding: 0 18px; border-radius: 12px; display: grid; place-items: center; font: 700 21px 'Inter Variable', sans-serif; color: #1b2030;
+    background: linear-gradient(#fff, #eef0fb); border: 1px solid rgb(20 30 80 / .14); box-shadow: 0 5px 0 rgb(20 30 80 / .14), 0 12px 26px rgb(20 30 80 / .25); opacity: 0; }
+
+  /* ending title next to the monitor */
+  #end { position: absolute; inset: 0; display: grid; align-items: center; justify-items: start; padding-left: 150px; text-align: left; opacity: 0; pointer-events: none; font-family: 'Inter Variable', sans-serif; color: #0d1230; }
+  #end .mark { width: 96px; height: 96px; margin: 0 0 22px; border-radius: 26px; display: grid; place-items: center; font-size: 52px; color: #fff; background: linear-gradient(135deg, #4f8bff, #8b5cf6); box-shadow: 0 20px 50px rgb(60 60 180 / .35); }
+  #end h1 { font-size: 96px; letter-spacing: -0.04em; margin: 0; font-weight: 800; }
+  #end p { font-size: 34px; margin: 10px 0 0; color: rgb(13 18 48 / .65); }
+  #end .url { font: 600 28px 'JetBrains Mono Variable', monospace; margin-top: 26px; color: #4b55e6; }
+</style>
+</head>
+<body>
+<div id="studio"></div>
+<div id="world">
+  <div id="rig">
+    <div id="floorshadow"></div><div id="base"></div><div id="neck"></div><div id="side"></div><div id="bezel"></div>
+    <div id="screen">
+      <div id="wall"></div>
+      <div id="desk"></div>
+      <div id="wheel"><div id="disc"></div><svg id="svg" viewBox="0 0 460 460"></svg></div>
+      <div id="ghost"></div>
+      <div id="toast"><header><span id="ttag">Working</span><span id="ttitle"></span></header><div class="tbar"><div id="tfill"></div></div><div id="tfoot"><span id="tcount"></span><span><b>Undo</b><b>⠿ Drag</b><b>Show ›</b></span></div></div>
+      <div id="taskbar">
+        <div class="tb"><div class="win4"><b></b><b></b><b></b><b></b></div></div>
+        <div class="tb"><div class="search"></div></div>
+        <div class="tb on"><div class="folder"></div></div>
+        <div class="tb"><div class="globe"></div></div>
+        <div class="tb"><div class="gear"></div></div>
+        <div id="tray"><span class="sd">⇄</span><span>ENG</span><span>📶 🔊 🔋</span><div id="clock">10:24 AM<br />28/10/2026</div></div>
+      </div>
+      <div id="keys"><div id="kshift" class="key">Shift</div><div id="kn" class="key">6</div></div>
+      <svg id="cursor" viewBox="0 0 24 32"><path d="M2 1 L2 25 L8 19.5 L12.2 29 L16.4 27.2 L12.3 18 L20 18 Z" fill="#fff" stroke="#111" stroke-width="1.5" stroke-linejoin="round"/></svg>
+      <div id="glare"></div>
+    </div>
+  </div>
+</div>
+<div id="end"><div><div class="mark">⇄</div><h1>ShiftDrop</h1><p>Shift + drag any file.<br />Free, offline, for Windows.</p><div class="url">shiftdrop.nhaajt.com</div></div></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+const seg = (t, a, b) => clamp((t - a) / (b - a));
+const ease = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+const out = (x) => 1 - Math.pow(1 - x, 3);
+const spring = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : 1 - Math.exp(-6 * x) * Math.cos(9 * x));
+const lerp = (a, b, x) => a + (b - a) * x;
+const fade = (t, a, b, c, d) => Math.min(seg(t, a, b), 1 - seg(t, c, d));
+
+// --- desktop icons
+const desk = $('desk');
+function icon(name, art, x, y) {
+  const d = document.createElement('div');
+  d.className = 'dicon';
+  d.innerHTML = `<div class="art">${art}</div><div>${name}</div>`;
+  d.style.left = `${x}px`;
+  d.style.top = `${y}px`;
+  desk.append(d);
+  return d;
+}
+const page = (label, color) => `<div class="page"><i style="top:22px"></i><i style="top:30px"></i><i style="top:38px;right:18px"></i><span class="badge" style="background:${color}">${label}</span></div>`;
+icon('Recycle Bin', '<div class="bin"></div>', 16, 14);
+icon('This PC', '<div class="page" style="width:58px;height:42px;border-radius:5px;background:linear-gradient(#5aa7ff,#1d6fe0)"></div>', 16, 132);
+const beach = icon('Beach.heic', '<div class="photo"></div>', 760, 330);
+const report = icon('Report.pdf', page('PDF', '#e5484d'), 1010, 520);
+const clip = icon('Interview.mp4', '<div class="film"></div>', 620, 640);
+const made = {
+  png: icon('Beach.png', '<div class="photo" style="filter:saturate(1.2)"></div>', 880, 330),
+  txt: icon('Report text.txt', page('TXT', '#64748b'), 1130, 520),
+  mp4: icon('Interview 8 MB.mp4', '<div class="film"></div>', 740, 640),
+};
+Object.values(made).forEach((m) => (m.style.opacity = 0));
+// layout position on the screen (unaffected by the camera transform)
+const at = (el) => { const a = el.querySelector('.art'); return [el.offsetLeft + a.offsetLeft + a.offsetWidth / 2, el.offsetTop + a.offsetTop + a.offsetHeight / 2]; };
+
+// --- wheel (the app's geometry: core 52, ring 58–146, options 152–212)
+const C = 230, NS = 'http://www.w3.org/2000/svg';
+const pt = (r, deg) => [C + r * Math.cos(((deg - 90) * Math.PI) / 180), C + r * Math.sin(((deg - 90) * Math.PI) / 180)];
+function sector(r0, r1, a0, a1) {
+  const L = a1 - a0 > 180 ? 1 : 0, [x0, y0] = pt(r1, a0), [x1, y1] = pt(r1, a1), [x2, y2] = pt(r0, a1), [x3, y3] = pt(r0, a0);
+  return `M${x0} ${y0}A${r1} ${r1} 0 ${L} 1 ${x1} ${y1}L${x2} ${y2}A${r0} ${r0} 0 ${L} 0 ${x3} ${y3}Z`;
+}
+const el = (tag, a, into) => { const e = document.createElementNS(NS, tag); for (const k in a) e.setAttribute(k, a[k]); into?.append(e); return e; };
+const txt = (into, x, y, cls, s) => { const e = el('text', { x, y, class: cls, 'text-anchor': 'middle', 'dominant-baseline': 'middle' }, into); e.textContent = s; return e; };
+const MENUS = {
+  image: { center: '→ JPG', items: [['⇄', 'Convert'], ['⇲', 'Compress'], ['⤡', 'Resize'], ['↻', 'Rotate'], ['⌗', 'Crop'], ['▣', 'Add BG'], ['T', 'Copy text'], ['⋯', 'More']], subOf: 0, sub: ['PNG', 'JPG', 'WEBP', 'AVIF', 'PDF'] },
+  pdf: { center: '→ JPG', items: [['⇄', 'Image'], ['⇲', 'Compress'], ['⊟', 'Split'], ['▤', 'Pages'], ['✍', 'Sign'], ['T', 'Text'], ['№', 'Numbers'], ['⋯', 'More']] },
+  video: { center: '→ GIF', items: [['⇄', 'Convert'], ['⇲', 'Compress'], ['⊡', 'Fit size'], ['⤡', 'Resize'], ['♪', 'Audio'], ['∅', 'Mute'], ['✂', 'Trim'], ['⋯', 'More']], subOf: 2, sub: ['8 MB', '10 MB', '25 MB', '50 MB'] },
+};
+let W = null;
+function build(kind) {
+  const svg = $('svg');
+  svg.replaceChildren();
+  const m = MENUS[kind], n = m.items.length, s = 360 / n, segs = [];
+  m.items.forEach(([g, name], i) => {
+    const gr = el('g', {}, svg);
+    const p = el('path', { d: sector(58, 146, i * s - s / 2, i * s + s / 2), class: 'seg' }, gr);
+    const [x, y] = pt(102, i * s);
+    txt(gr, x, y - 8, 'glyph', g); txt(gr, x, y + 12, 'name', name);
+    const [nx, ny] = pt(135, i * s); txt(gr, nx, ny, 'num', i + 1);
+    segs.push({ gr, p });
+  });
+  const ring2 = el('g', { opacity: 0 }, svg), subs = [];
+  if (m.sub) {
+    const w = 34, start = m.subOf * s - (w * m.sub.length) / 2;
+    m.sub.forEach((name, j) => {
+      const gr = el('g', {}, ring2);
+      const p = el('path', { d: sector(152, 212, start + j * w, start + (j + 1) * w), class: 'seg' }, gr);
+      const mid = start + j * w + w / 2, [x, y] = pt(182, mid);
+      txt(gr, x, y, 'sub', name);
+      subs.push({ gr, p, mid });
+    });
+  }
+  el('circle', { cx: C, cy: C, r: 52, class: 'core' }, svg);
+  txt(svg, C, C - 6, 'clabel', m.center);
+  txt(svg, C, C + 14, 'chint', 'drop here');
+  W = { kind, segs, subs, ring2, s };
+}
+function hot(i, j) {
+  W.segs.forEach((g, k) => { g.p.classList.toggle('hot', k === i); g.gr.classList.toggle('hot-l', k === i); });
+  W.subs.forEach((g, k) => { g.p.classList.toggle('hot', k === j); g.gr.classList.toggle('hot-l', k === j); });
+}
+const wedge = (i, r = 102) => { const [x, y] = pt(r, i * W.s); return [x - C, y - C]; };
+const subPt = (j) => { const [x, y] = pt(182, W.subs[j].mid); return [x - C, y - C]; };
+
+function setToast(running, done, p, count) {
+  const fin = p >= 1;
+  $('ttag').textContent = fin ? 'Done' : 'Working';
+  $('ttag').className = fin ? 'done' : '';
+  $('ttitle').textContent = fin ? done : `${running}…`;
+  $('tfill').style.width = `${Math.round(p * 100)}%`;
+  $('tcount').textContent = fin ? count : '0 of 1 saved';
+}
+
+// --- camera: from a three-quarter view of the monitor into the screen, and back out at the end
+const FAR = { z: -3300, ry: -26, rx: 7, x: 260, y: -120 };
+function camera(t) {
+  // in: 0–0.8 hold, 0.8–2.6 dolly in; out: 26.4–28.6
+  const k = t < 20 ? 1 - ease(seg(t, 0.8, 2.6)) : ease(seg(t, 26.4, 28.6));
+  const drift = t < 3 ? (1 - seg(t, 0, 2.6)) * 0.6 : 0;
+  // the closing shot leaves room on the left for the title
+  const P = t < 20 ? FAR : { z: -3600, ry: -30, rx: 6, x: 620, y: -60 };
+  const z = lerp(0, P.z, k), ry = lerp(0, P.ry + drift * 4, k), rx = lerp(0, P.rx, k);
+  const x = lerp(0, P.x, k), y = lerp(0, P.y, k);
+  // a slow, breathing push while working on the desktop, like a handheld camera
+  const live = k < 0.001 ? 1 + 0.025 * Math.sin(t / 3.2) : 1;
+  $('rig').style.transform = `translate3d(${x}px, ${y}px, ${z}px) rotateX(${rx}deg) rotateY(${ry}deg) scale(${live})`;
+  $('glare').style.opacity = k;
+  return k;
+}
+
+function render(t) {
+  const k = camera(t);
+  $('end').style.opacity = out(seg(t, 27.6, 28.6));
+  $('end').style.transform = `translateX(${lerp(-30, 0, out(seg(t, 27.6, 28.8)))}px)`;
+
+  let cur = [1700, 860], wheelOpen = 0, wheelAt = null, ghost = null, shift = 0, nkey = 0, toast = 0, hi = -1, hj = -1, sel = null;
+
+  // A: Beach.heic → Convert › PNG (3.0–10.6)
+  if (t < 10.6) {
+    if (!W || W.kind !== 'image') build('image');
+    const f = at(beach), drag = [f[0] + 170, f[1] + 110];
+    if (t < 4.2) { const x = ease(seg(t, 3.0, 4.2)); cur = [lerp(1500, f[0], x), lerp(900, f[1], x)]; }
+    else if (t < 5.0) { const x = ease(seg(t, 4.4, 5.0)); cur = [lerp(f[0], drag[0], x), lerp(f[1], drag[1], x)]; ghost = beach; sel = beach; }
+    else { cur = drag; ghost = beach; sel = beach; }
+    shift = fade(t, 4.9, 5.05, 7.9, 8.2);
+    wheelAt = f;
+    wheelOpen = spring(seg(t, 5.15, 5.9)) * (1 - seg(t, 7.75, 7.95));
+    W.ring2.setAttribute('opacity', 0);
+    if (t >= 5.7 && t < 7.8) {
+      const cv = wedge(0), sp = subPt(0);
+      if (t < 6.4) { const x = ease(seg(t, 5.7, 6.4)); cur = [lerp(drag[0], f[0] + cv[0], x), lerp(drag[1], f[1] + cv[1], x)]; hi = x > 0.8 ? 0 : -1; }
+      else if (t < 6.9) { cur = [f[0] + cv[0], f[1] + cv[1]]; hi = 0; }
+      else { const x = ease(seg(t, 6.9, 7.45)); cur = [lerp(f[0] + cv[0], f[0] + sp[0], x), lerp(f[1] + cv[1], f[1] + sp[1], x)]; hi = x < 0.5 ? 0 : -1; hj = x >= 0.5 ? 0 : -1; }
+      if (t >= 6.3) W.ring2.setAttribute('opacity', out(seg(t, 6.3, 6.6)));
+    }
+    if (t >= 7.8) { ghost = null; const x = ease(seg(t, 8.4, 10)); cur = [lerp(cur[0], 1560, x), lerp(cur[1], 880, x)]; }
+    toast = fade(t, 7.9, 8.15, 10.2, 10.6);
+    setToast('Converting to PNG', 'Converted to PNG', seg(t, 8.1, 9.1), '1 of 1 saved');
+    made.png.style.opacity = out(seg(t, 9.1, 9.5));
+  }
+
+  // B: Report.pdf → key 6 → Text (10.6–17.8)
+  else if (t < 17.8) {
+    if (!W || W.kind !== 'pdf') build('pdf');
+    W.ring2.setAttribute('opacity', 0);
+    const f = at(report), drag = [f[0] - 150, f[1] + 120];
+    if (t < 11.8) { const x = ease(seg(t, 10.6, 11.8)); cur = [lerp(1560, f[0], x), lerp(880, f[1], x)]; }
+    else if (t < 12.6) { const x = ease(seg(t, 12.0, 12.6)); cur = [lerp(f[0], drag[0], x), lerp(f[1], drag[1], x)]; ghost = report; sel = report; }
+    else { cur = drag; ghost = report; sel = report; }
+    shift = fade(t, 12.5, 12.65, 15.0, 15.3);
+    wheelAt = f;
+    wheelOpen = spring(seg(t, 12.75, 13.5)) * (1 - seg(t, 14.85, 15.05));
+    nkey = fade(t, 13.9, 14.0, 14.8, 15.1);
+    if (t > 13.95 && t < 14.9) hi = 5;
+    if (t >= 14.9) { ghost = null; const x = ease(seg(t, 15.4, 17)); cur = [lerp(drag[0], 1560, x), lerp(drag[1], 880, x)]; }
+    toast = fade(t, 15.0, 15.25, 17.4, 17.8);
+    setToast('Getting text', 'Got text', seg(t, 15.2, 16.2), '1 of 1 saved');
+    made.txt.style.opacity = out(seg(t, 16.2, 16.6));
+  }
+
+  // C: Interview.mp4 → Fit size › 8 MB (17.8–26.2)
+  else if (t < 26.2) {
+    if (!W || W.kind !== 'video') build('video');
+    const f = at(clip), drag = [f[0] + 170, f[1] - 90];
+    if (t < 19.0) { const x = ease(seg(t, 17.8, 19.0)); cur = [lerp(1560, f[0], x), lerp(880, f[1], x)]; }
+    else if (t < 19.8) { const x = ease(seg(t, 19.2, 19.8)); cur = [lerp(f[0], drag[0], x), lerp(f[1], drag[1], x)]; ghost = clip; sel = clip; }
+    else { cur = drag; ghost = clip; sel = clip; }
+    shift = fade(t, 19.7, 19.85, 22.8, 23.1);
+    wheelAt = f;
+    wheelOpen = spring(seg(t, 19.95, 20.7)) * (1 - seg(t, 22.65, 22.85));
+    W.ring2.setAttribute('opacity', 0);
+    if (t >= 20.5 && t < 22.7) {
+      const fs = wedge(2), sp = subPt(0);
+      if (t < 21.2) { const x = ease(seg(t, 20.5, 21.2)); cur = [lerp(drag[0], f[0] + fs[0], x), lerp(drag[1], f[1] + fs[1], x)]; hi = x > 0.8 ? 2 : -1; }
+      else if (t < 21.7) { cur = [f[0] + fs[0], f[1] + fs[1]]; hi = 2; }
+      else { const x = ease(seg(t, 21.7, 22.3)); cur = [lerp(f[0] + fs[0], f[0] + sp[0], x), lerp(f[1] + fs[1], f[1] + sp[1], x)]; hi = x < 0.5 ? 2 : -1; hj = x >= 0.5 ? 0 : -1; }
+      if (t >= 21.1) W.ring2.setAttribute('opacity', out(seg(t, 21.1, 21.4)));
+    }
+    if (t >= 22.7) { ghost = null; const x = ease(seg(t, 23.3, 25)); cur = [lerp(cur[0], 1560, x), lerp(cur[1], 880, x)]; }
+    toast = fade(t, 22.8, 23.05, 25.8, 26.2);
+    setToast('Fitting into 8 MB', 'Fitted into 8 MB', seg(t, 23.0, 24.6), '7.6 MB (limit 8 MB)');
+    made.mp4.style.opacity = out(seg(t, 24.6, 25.0));
+  } else {
+    W.ring2.setAttribute('opacity', 0);
+  }
+  if (t >= 26.2) cur = [1560, 880];
+
+  // apply
+  $('cursor').style.transform = `translate(${cur[0]}px, ${cur[1]}px)`;
+  document.querySelectorAll('.dicon').forEach((d) => d.classList.toggle('sel', d === sel));
+  const g = $('ghost');
+  if (ghost) {
+    if (g.dataset.n !== ghost.textContent) { g.innerHTML = ghost.innerHTML; g.className = 'dicon'; g.dataset.n = ghost.textContent; }
+    g.style.opacity = 0.75;
+    g.style.left = `${cur[0] - 56}px`;
+    g.style.top = `${cur[1] - 40}px`;
+  } else g.style.opacity = 0;
+  const wh = $('wheel');
+  wh.style.opacity = clamp(wheelOpen * 1.4);
+  if (wheelAt) { wh.style.left = `${wheelAt[0]}px`; wh.style.top = `${wheelAt[1]}px`; }
+  wh.style.transform = `scale(${lerp(0.85, 1, wheelOpen)})`;
+  const big = +W.ring2.getAttribute('opacity') > 0.05;
+  $('disc').style.width = $('disc').style.height = `${(big ? 216 : 150) * 2}px`;
+  hot(hi, hj);
+  $('kshift').style.opacity = shift;
+  $('kshift').style.transform = `translateY(${lerp(14, 0, out(shift))}px)`;
+  $('kn').style.opacity = nkey;
+  $('kn').style.display = nkey > 0 ? '' : 'none';
+  $('toast').style.opacity = toast;
+  $('toast').style.transform = `translateY(${lerp(20, 0, out(toast))}px)`;
+}
+window.render = render;
+document.fonts.ready.then(() => { render(0); window.ready = true; });
+</script>
+</body>
+</html>

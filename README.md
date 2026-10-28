@@ -11,7 +11,8 @@ kind of file: convert, compress, crop, sign, transcribe, check, share. Everythin
 
 [**Download for Windows**](https://github.com/nhaajtt/shiftdrop/releases/latest) ·
 [Website](https://shiftdrop.nhaajt.com) ·
-[Watch the demo](docs/media/demo.mp4)
+[Watch the intro](docs/media/intro.mp4) ·
+[Full tour](docs/media/demo.mp4)
 
 <img src="docs/media/demo.gif" width="760" alt="Dragging a photo with Shift held opens a round menu; dropping it on PNG converts the file" />
 
