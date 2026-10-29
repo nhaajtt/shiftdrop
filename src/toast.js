@@ -3,6 +3,7 @@ import { listen } from '@tauri-apps/api/event';
 import { startDrag } from '@crabnebula/tauri-plugin-drag';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { check } from '@tauri-apps/plugin-updater';
+import { fixFor, runFix } from './fixes.js';
 import { initTheme } from './theme.js';
 
 initTheme();
@@ -19,14 +20,13 @@ function render(u) {
   shown = u.id;
   $('state').textContent = TAGS[u.state];
   $('state').className = `tag ${u.state}`;
-  $('title').textContent = u.state === 'done' ? u.title.replace(/^(\w+)ing\b/, (_, w) => doneWord(w)) : `${u.title}…`;
+  $('title').textContent = u.error && u.state !== 'running' ? u.title : u.state === 'done' ? u.title.replace(/^(\w+)ing\b/, (_, w) => doneWord(w)) : `${u.title}…`;
   $('fill').style.transform = `scaleX(${u.percent.toFixed(3)})`;
   $('count').textContent = `${u.done} of ${u.total} saved`;
   const waiting = [...jobs.values()].filter((j) => j.state === 'running' && j.id !== u.id).length;
   $('queue').textContent = waiting ? `+${waiting} queued` : '';
   $('show').hidden = !u.outputs.length;
   $('drag').hidden = !u.outputs.length || u.state !== 'done';
-  $('report').hidden = u.state !== 'error';
   $('undo').hidden = !u.outputs.length || u.state !== 'done';
   $('undo').disabled = false;
   $('undo').textContent = 'Undo';
@@ -37,7 +37,59 @@ function render(u) {
   $('error').textContent = msg;
   $('error').title = msg;
   if (u.note && !u.outputs.length && u.state === 'done') $('count').textContent = 'done';
+  showFailure(u);
 }
+
+// --- failures: stay on screen with what happened and how to fix it
+let fixing = null; // the fix offered for the job on screen
+function showFailure(u) {
+  const failed = !!u.error && u.state !== 'running';
+  document.body.classList.toggle('failed', failed);
+  if (failed) {
+    const fix = fixFor(u.error);
+    fixing = fix;
+    $('why').textContent = fix.why;
+    $('how').textContent = fix.how;
+    $('fixbtn').hidden = !fix.action;
+    $('fixbtn').disabled = false;
+    $('fixbtn').textContent = fix.action?.label || '';
+    $('retry').hidden = true;
+    $('report').hidden = fix.action?.kind === 'report';
+  }
+  // grow the window to fit the explanation, shrink back for progress
+  requestAnimationFrame(() => invoke('toast_height', { height: failed ? Math.ceil($('card').scrollHeight) + 18 : 112 }));
+}
+
+$('fixbtn').addEventListener('click', async () => {
+  const u = jobs.get(shown);
+  if (!fixing?.action) return;
+  const btn = $('fixbtn');
+  btn.disabled = true;
+  const label = btn.textContent;
+  if (fixing.action.kind === 'addon') btn.textContent = 'Downloading…';
+  try {
+    await runFix(fixing.action, invoke, u ? `${u.title}: ${u.error}` : null);
+    if (fixing.action.kind === 'addon') {
+      btn.textContent = 'Installed ✓';
+      $('retry').hidden = false;
+    } else btn.disabled = false;
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = label;
+    $('how').textContent = String(e);
+  }
+});
+
+// runs the same action again (read back from the Activity list)
+$('retry').addEventListener('click', async () => {
+  const u = jobs.get(shown);
+  const rec = (await invoke('get_history')).find((r) => r.id === u?.id);
+  if (!rec?.action) return invoke('open_hub', { paths: [], view: 'activity', item: null });
+  document.body.classList.remove('failed');
+  invoke('run_action', { paths: rec.files, action: rec.action, title: rec.title });
+});
+
+$('details').addEventListener('click', () => invoke('open_hub', { paths: [], view: 'activity', item: null }));
 
 // "Converting to JPG" → "Converted to JPG", "Merging" → "Merged"
 const DONE = {
@@ -69,7 +121,9 @@ listen('job', ({ payload: u }) => {
   if (u.state !== 'running') {
     const next = [...jobs.values()].find((j) => j.state === 'running');
     if (next && next.id !== u.id) setTimeout(() => render(jobs.get(next.id)), 1200);
-    scheduleHide(u.state === 'error' ? 9000 : 3500);
+    // failures wait for the user; successes slip away
+    if (u.error) clearTimeout(hideTimer);
+    else scheduleHide(3500);
   } else {
     clearTimeout(hideTimer);
   }
@@ -106,6 +160,8 @@ $('undo').addEventListener('click', async () => {
   }
 });
 $('close').addEventListener('click', () => {
+  document.body.classList.remove('failed');
+  invoke('toast_height', { height: 112 });
   clearTimeout(hideTimer);
   invoke('toast_hide');
 });

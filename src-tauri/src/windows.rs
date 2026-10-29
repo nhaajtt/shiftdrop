@@ -122,16 +122,28 @@ pub fn overlay_hide(app: AppHandle) {
 }
 
 /// Bottom-right corner of the monitor under the cursor's last known position (primary as fallback).
+/// Height of the toast in logical pixels: compact for progress, taller when it explains a failure.
+static TOAST_H: AtomicU32 = AtomicU32::new(TOAST.1 as u32);
+
 pub fn show_toast(app: &AppHandle) {
     let Some(w) = app.get_webview_window("toast") else { return };
     let Ok(Some(m)) = w.primary_monitor() else { return };
     let scale = m.scale_factor();
     let area = m.work_area();
-    let (tw, th) = ((TOAST.0 * scale) as i32, (TOAST.1 * scale) as i32);
+    let (tw, th) = ((TOAST.0 * scale) as i32, (TOAST_H.load(Ordering::Relaxed) as f64 * scale) as i32);
     let pad = (MARGIN * scale) as i32;
     let x = area.position.x + area.size.width as i32 - tw - pad;
     let y = area.position.y + area.size.height as i32 - th - pad;
     place(&w, x, y, tw, th);
+}
+
+/// The toast grows to fit an error with its explanation, and shrinks back for progress.
+#[tauri::command]
+pub fn toast_height(app: AppHandle, height: u32) {
+    TOAST_H.store(height.clamp(TOAST.1 as u32, 320), Ordering::Relaxed);
+    if app.get_webview_window("toast").is_some_and(|w| w.is_visible().unwrap_or(false)) {
+        show_toast(&app);
+    }
 }
 
 #[tauri::command]

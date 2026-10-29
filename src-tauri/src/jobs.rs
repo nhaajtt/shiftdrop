@@ -1,5 +1,5 @@
 use crate::engines::{self, Action};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{
     path::PathBuf,
     sync::{
@@ -31,6 +31,95 @@ struct Update<'a> {
 }
 
 pub struct Queue(Mutex<Sender<Job>>);
+
+/// A finished job as kept in the Activity list (also across restarts).
+#[derive(Clone, Serialize, Deserialize)]
+pub struct Record {
+    pub id: u64,
+    /// seconds since 1970
+    pub time: u64,
+    pub title: String,
+    pub files: Vec<String>,
+    pub state: String,
+    pub outputs: Vec<String>,
+    pub error: Option<String>,
+    pub note: Option<String>,
+    /// what to run again for "Retry"; never kept when it holds a password or a signature
+    pub action: Option<serde_json::Value>,
+}
+
+const KEEP: usize = 200;
+static HISTORY: Mutex<Option<Vec<Record>>> = Mutex::new(None);
+
+fn history_file(app: &AppHandle) -> Option<PathBuf> {
+    use tauri::Manager;
+    app.path().app_config_dir().ok().map(|d| d.join("history.json"))
+}
+
+fn with_history<T>(app: &AppHandle, f: impl FnOnce(&mut Vec<Record>) -> T) -> T {
+    let mut h = HISTORY.lock().unwrap();
+    let list = h.get_or_insert_with(|| {
+        history_file(app).and_then(|p| std::fs::read_to_string(p).ok()).and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default()
+    });
+    f(list)
+}
+
+fn remember(app: &AppHandle, r: Record) {
+    let snapshot = with_history(app, |list| {
+        list.insert(0, r);
+        list.truncate(KEEP);
+        serde_json::to_string(list).unwrap_or_default()
+    });
+    if let Some(p) = history_file(app) {
+        let _ = std::fs::create_dir_all(p.parent().unwrap());
+        let _ = std::fs::write(p, snapshot);
+    }
+    let _ = app.emit("history", ());
+}
+
+#[tauri::command]
+pub async fn get_history(app: AppHandle) -> Vec<Record> {
+    with_history(&app, |l| l.clone())
+}
+
+#[tauri::command]
+pub async fn clear_history(app: AppHandle) {
+    with_history(&app, |l| l.clear());
+    if let Some(p) = history_file(&app) {
+        let _ = std::fs::remove_file(p);
+    }
+    let _ = app.emit("history", ());
+}
+
+/// Debug text of an action with passwords blanked out, for the log.
+pub fn redacted(action: &Action) -> String {
+    redact(&format!("{action:?}"))
+}
+
+/// Blanks the values that must never reach the log: passwords and the signature image.
+pub fn redact(text: &str) -> String {
+    ["password: \"", "png: \""].iter().fold(text.to_string(), |t, key| blank(&t, key))
+}
+
+fn blank(text: &str, key: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(i) = rest.find(key) {
+        let start = i + key.len();
+        out.push_str(&rest[..start]);
+        out.push_str("•••");
+        rest = &rest[start..];
+        // skip to the closing quote (a quote inside the password is escaped as \")
+        let mut end = 0;
+        let bytes = rest.as_bytes();
+        while end < bytes.len() && !(bytes[end] == b'"' && (end == 0 || bytes[end - 1] != b'\\')) {
+            end += 1;
+        }
+        rest = &rest[end..];
+    }
+    out.push_str(rest);
+    out
+}
 
 /// One worker runs jobs in order so a batch doesn't saturate every core at once.
 pub fn start(app: AppHandle) -> Queue {
@@ -72,19 +161,36 @@ fn run(app: &AppHandle, job: Job) {
     let notes = engines::take_notes();
     let note = (!notes.is_empty()).then(|| notes.join("
 "));
-    emit(if done == 0 { "error" } else { "done" }, done, 1.0, &outputs, error, note);
+    let state = if done == 0 { "error" } else { "done" };
+    remember(
+        app,
+        Record {
+            id: job.id,
+            time: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0),
+            title: job.title.clone(),
+            files: job.paths.iter().map(|p| p.display().to_string()).collect(),
+            state: if errors.is_empty() { state.into() } else if done > 0 { "partial".into() } else { "error".into() },
+            outputs: outputs.iter().map(|p| p.display().to_string()).collect(),
+            error: error.clone(),
+            note: note.clone(),
+            action: Some(&job.action).filter(|a| !redacted(a).contains("•••")).and_then(|a| serde_json::to_value(a).ok()),
+        },
+    );
+    emit(state, done, 1.0, &outputs, error, note);
 }
 
 #[tauri::command]
 pub fn run_action(app: AppHandle, paths: Vec<String>, action: Action, title: String) -> Result<u64, String> {
-    crate::log(&format!("run_action {action:?} on {paths:?}"));
+    crate::log(&format!("run_action {} on {paths:?}", redacted(&action)));
     queue(&app, paths.into_iter().map(PathBuf::from).collect(), action, title)
 }
 
 /// Adds a job to the queue and shows the toast.
 pub fn queue(app: &AppHandle, paths: Vec<PathBuf>, action: Action, title: String) -> Result<u64, String> {
     use tauri::Manager;
-    static ID: AtomicU64 = AtomicU64::new(1);
+    // ids keep growing across restarts so the Activity list never mixes two jobs up
+    static ID: AtomicU64 = AtomicU64::new(0);
+    let _ = ID.compare_exchange(0, std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(1), Ordering::SeqCst, Ordering::SeqCst);
     // folders only make sense for zip and copy-path
     let folders_ok = matches!(action, Action::Zip | Action::CopyPath | Action::CopyPathAs { .. });
     let paths: Vec<PathBuf> = paths.into_iter().filter(|p| p.is_file() || (folders_ok && p.is_dir())).collect();
@@ -113,4 +219,14 @@ pub async fn reveal(path: String) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     std::process::Command::new("open").arg("-R").arg(&p).spawn().map_err(|e| e.to_string())?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn passwords_never_reach_the_log() {
+        let s = super::redact(r#"Protect { password: "Secr\"et-1" } and Decrypt { password: "abc" } Stamp { page: 0, png: "data:image/png;base64,iVBORw0K" }"#);
+        assert!(!s.contains("Secr") && !s.contains("abc") && !s.contains("iVBOR"), "{s}");
+        assert_eq!(s.matches("•••").count(), 3);
+    }
 }

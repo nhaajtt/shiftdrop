@@ -10,6 +10,7 @@ import './features.js';
 import './recipes.js';
 import './share-ui.js';
 import './welcome.js';
+import './activity.js';
 
 initTheme();
 
@@ -26,13 +27,16 @@ function nav() {
   for (const v of views) {
     if (v.hidden) continue;
     if (v.bottom && !$nav.querySelector('.spacer')) $nav.append(h('div', { class: 'spacer' }));
+    const badge = v.badge?.();
     $nav.append(
-      h('button', { class: v.id === state.view ? 'on' : '', onclick: () => show(v.id) }, h('span', { class: 'g' }, v.glyph), v.label),
+      h('button', { class: v.id === state.view ? 'on' : '', onclick: () => show(v.id) }, h('span', { class: 'g' }, v.glyph), v.label, badge ? h('span', { class: 'badge' }, String(badge)) : null),
     );
   }
 }
 
 shared.show = (id) => show(id);
+shared.nav = () => nav();
+shared.view = () => state.view;
 
 export function show(id) {
   state.view = id;

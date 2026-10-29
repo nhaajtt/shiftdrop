@@ -19,10 +19,19 @@
         <span id="queue" class="label"></span>
         <button id="drag" class="btn btn-ghost" hidden title="Drag the result into another app">⠿ Drag</button>
         <button id="undo" class="btn btn-ghost" hidden title="Move the new files to the Recycle Bin">Undo</button>
-        <button id="report" class="btn btn-ghost" hidden title="Report this problem on GitHub">Report</button>
         <button id="show" class="btn btn-ghost" hidden>Show ›</button>
       </footer>
       <p id="error" hidden></p>
+      <div id="fail">
+        <p id="why"></p>
+        <p id="how"></p>
+        <div class="fix-row">
+          <button id="fixbtn" class="btn primary"></button>
+          <button id="retry" class="btn" hidden>Try again</button>
+          <button id="details" class="btn btn-ghost">Details</button>
+          <button id="report" class="btn btn-ghost" title="Report this problem on GitHub">Report</button>
+        </div>
+      </div>
       <div id="upd">
         <span class="label" id="updnote">Updates are signed and installed in a few seconds.</span>
         <button id="later" class="btn btn-ghost">Later</button>

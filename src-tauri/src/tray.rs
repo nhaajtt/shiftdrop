@@ -18,6 +18,7 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
     let open = MenuItem::with_id(app, "open", "Open ShiftDrop…", true, None::<&str>)?;
     let shelf = MenuItem::with_id(app, "shelf", "Shelf", true, None::<&str>)?;
     let help = MenuItem::with_id(app, "welcome", "How to use", true, None::<&str>)?;
+    let activity = MenuItem::with_id(app, "activity", "Activity (results and errors)", true, None::<&str>)?;
     let enabled = CheckMenuItem::with_id(app, "enabled", "Enabled", true, s.enabled, None::<&str>)?;
     let explorer = CheckMenuItem::with_id(app, "explorer_only", "Only from File Explorer and desktop", true, s.explorer_only, None::<&str>)?;
     let startup = CheckMenuItem::with_id(app, "autostart", "Start with Windows", true, autostart, None::<&str>)?;
@@ -32,7 +33,7 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
     }
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
     let sep = || PredefinedMenuItem::separator(app);
-    Menu::with_items(app, &[&title, &open, &shelf, &help, &sep()?, &enabled, &explorer, &startup, &sep()?, &accent, &theme, &sep()?, &quit])
+    Menu::with_items(app, &[&title, &open, &activity, &shelf, &help, &sep()?, &enabled, &explorer, &startup, &sep()?, &accent, &theme, &sep()?, &quit])
 }
 
 pub fn create(app: &AppHandle) -> tauri::Result<()> {
@@ -50,6 +51,9 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
                 }
                 "open" => {
                     let _ = crate::windows::open_hub_now(app.clone(), vec![], "actions".into(), None);
+                }
+                "activity" => {
+                    let _ = crate::windows::open_hub_now(app.clone(), vec![], "activity".into(), None);
                 }
                 "welcome" => {
                     let _ = crate::windows::open_hub_now(app.clone(), vec![], "welcome".into(), None);

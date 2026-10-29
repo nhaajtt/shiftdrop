@@ -41,6 +41,16 @@ pub fn log(msg: &str) {
     }
 }
 
+/// Opens a help link from a failure's fix. Only these sites, so a message can never open anything else.
+#[tauri::command]
+async fn open_link(url: String) -> Result<(), String> {
+    const ALLOWED: [&str; 3] = ["https://www.libreoffice.org/", "https://www.microsoft.com/", "https://github.com/nhaajtt/shiftdrop"];
+    if !ALLOWED.iter().any(|a| url.starts_with(a)) {
+        return Err("link not allowed".into());
+    }
+    engines::security::open_url(&url).map_err(|e| e.to_string())
+}
+
 /// Opens the log folder in Explorer.
 #[tauri::command]
 async fn open_logs() -> Result<(), String> {
@@ -186,10 +196,14 @@ pub fn run() {
             settings::set_autostart,
             jobs::run_action,
             jobs::reveal,
+            jobs::get_history,
+            jobs::clear_history,
             windows::open_editor,
             windows::overlay_hide,
             windows::toast_hide,
             windows::toast_show,
+            windows::toast_height,
+            open_link,
             windows::open_hub,
             windows::hub_take,
             engines::security::tools_status,

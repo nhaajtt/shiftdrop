@@ -17,10 +17,10 @@ mod tests;
 
 use crate::naming::{kind, Kind};
 use anyhow::{bail, Result};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-#[derive(Deserialize, Clone, Copy, Debug)]
+#[derive(Deserialize, Serialize, Clone, Copy, Debug)]
 #[serde(rename_all = "snake_case")]
 pub enum Level {
     Low,
@@ -28,7 +28,7 @@ pub enum Level {
     High,
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 #[serde(tag = "op", rename_all = "snake_case")]
 pub enum Action {
     Convert { to: String },

@@ -600,3 +600,111 @@ textarea:focus {
     animation: none;
   }
 }
+
+nav .badge {
+  margin-left: auto;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--danger);
+}
+
+/* activity */
+.act {
+  padding: 14px 16px;
+  margin-bottom: 10px;
+}
+
+.act header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.act header b {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.act .when {
+  color: var(--muted);
+  font-size: 12px;
+  flex: none;
+}
+
+.state {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  color: #fff;
+  background: var(--ok);
+  flex: none;
+}
+
+.state.error,
+.state.partial {
+  background: var(--danger);
+}
+
+.act.error {
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--line));
+}
+
+.act .files {
+  margin: 8px 0 0;
+}
+
+.act pre {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+  font: 12px/1.5 'JetBrains Mono Variable', ui-monospace, monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.act .fix {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+}
+
+.act .fix b {
+  display: block;
+}
+
+.act .fix p {
+  margin: 4px 0 8px;
+  color: var(--muted);
+}
+
+.act .row-btns {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.act .note {
+  margin: 8px 0 0;
+  color: var(--muted);
+}
+
+.filter {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
