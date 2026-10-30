@@ -155,7 +155,7 @@ fn strings(src: &Path) -> Result<PathBuf> {
     }
     out += "\n--- UTF-16 ---\n";
     run.clear();
-    for c in data.chunks_exact(2) {
+    for c in data.as_chunks::<2>().0 {
         if c[1] == 0 && printable(c[0]) {
             run.push(c[0] as char);
         } else {

@@ -111,11 +111,10 @@ unsafe fn explorer_focused() -> Option<HWND> {
     }
     let mut info: GUITHREADINFO = std::mem::zeroed();
     info.cbSize = std::mem::size_of::<GUITHREADINFO>() as u32;
-    if GetGUIThreadInfo(GetWindowThreadProcessId(fg, std::ptr::null_mut()), &mut info) != 0 && !info.hwndFocus.is_null() {
-        if ["Edit", "RichEdit20W", "RICHEDIT50W"].contains(&class(info.hwndFocus).as_str()) || info.hwndCaret != std::ptr::null_mut() {
+    if GetGUIThreadInfo(GetWindowThreadProcessId(fg, std::ptr::null_mut()), &mut info) != 0 && !info.hwndFocus.is_null()
+        && (["Edit", "RichEdit20W", "RICHEDIT50W"].contains(&class(info.hwndFocus).as_str()) || !info.hwndCaret.is_null()) {
             return None;
         }
-    }
     Some(fg)
 }
 
@@ -247,7 +246,7 @@ fn frost(rgb: &mut [u8], w: usize, h: usize) {
         box_pass(rgb, &mut buf, w, h, 2, true);
         box_pass(&buf, rgb, w, h, 2, false);
     }
-    for p in rgb.chunks_exact_mut(3) {
+    for p in rgb.as_chunks_mut::<3>().0 {
         let l = 0.2126 * p[0] as f32 + 0.7152 * p[1] as f32 + 0.0722 * p[2] as f32;
         for c in p.iter_mut() {
             *c = ((l + (*c as f32 - l) * 1.9) * 1.06).clamp(0.0, 255.0) as u8;
@@ -300,7 +299,7 @@ pub fn capture(x: i32, y: i32, w: i32, h: i32, shrink: i32) -> Option<Vec<u8>> {
         if rows == 0 {
             return None;
         }
-        let mut rgb: Vec<u8> = bgra.chunks_exact(4).flat_map(|p| [p[2], p[1], p[0]]).collect();
+        let mut rgb: Vec<u8> = bgra.as_chunks::<4>().0.iter().flat_map(|p| [p[2], p[1], p[0]]).collect();
         // the frost is baked in here, once: animating a CSS blur would redo it every frame
         frost(&mut rgb, sw as usize, sh as usize);
         let mut out = Vec::new();

@@ -41,7 +41,7 @@ unsafe fn find(root: HWND) -> Result<Vec<PathBuf>> {
     for i in 0..shell.Count()? {
         let Ok(disp) = shell.Item(&int(i)) else { continue };
         let Ok(app) = disp.cast::<IWebBrowserApp>() else { continue };
-        if app.HWND().map(|h| h.0 as isize).ok() != Some(root.0 as isize) {
+        if app.HWND().map(|h| h.0).ok() != Some(root.0 as isize) {
             continue;
         }
         let sp: IServiceProvider = disp.cast()?;

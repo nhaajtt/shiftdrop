@@ -236,7 +236,7 @@ fn custom(src: &std::path::Path, command: &str) -> Result<Vec<PathBuf>> {
         let err = String::from_utf8_lossy(&o.stderr);
         bail!("{}", err.lines().last().unwrap_or("the command failed"));
     }
-    if let Some(last) = String::from_utf8_lossy(&o.stdout).lines().filter(|l| !l.trim().is_empty()).last() {
+    if let Some(last) = String::from_utf8_lossy(&o.stdout).lines().rfind(|l| !l.trim().is_empty()) {
         note(last.trim());
     }
     // whatever appeared in the folder counts as the result

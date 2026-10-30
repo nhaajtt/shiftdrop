@@ -88,7 +88,7 @@ fn libreoffice() -> Option<&'static Path> {
     P.get_or_init(|| {
         ["ProgramFiles", "ProgramFiles(x86)"]
             .iter()
-            .filter_map(|v| std::env::var_os(v))
+            .filter_map(std::env::var_os)
             .map(|d| Path::new(&d).join("LibreOffice").join("program").join("soffice.exe"))
             .find(|p| p.is_file())
     })

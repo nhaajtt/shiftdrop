@@ -29,7 +29,7 @@ pub fn start(app: AppHandle) {
         loop {
             std::thread::sleep(Duration::from_secs(2));
             let watches = settings::get(&app).watches;
-            known.retain(|dir, _| watches.iter().any(|w| PathBuf::from(&w.folder) == *dir));
+            known.retain(|dir, _| watches.iter().any(|w| std::path::Path::new(&w.folder) == dir.as_path()));
             for w in &watches {
                 let dir = PathBuf::from(&w.folder);
                 let Ok(rd) = std::fs::read_dir(&dir) else { continue };
@@ -110,7 +110,7 @@ fn unattended_ok(a: &Action) -> bool {
 }
 
 /// Browser partial downloads and temporary files.
-fn ignorable(p: &PathBuf) -> bool {
+fn ignorable(p: &std::path::Path) -> bool {
     let n = p.file_name().map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_default();
     n.starts_with('~') || n.starts_with('.') || [".crdownload", ".part", ".tmp", ".download", ".partial"].iter().any(|e| n.ends_with(e))
 }

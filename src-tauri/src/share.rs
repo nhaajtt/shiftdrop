@@ -1,7 +1,8 @@
 //! Sending files elsewhere, only when the user asks:
 //! - to a phone on the same Wi-Fi (one-time link, LAN address only, expires),
-//! - to the user's own Cloudflare R2 bucket (link copied),
-//! and translating or summarising text with the user's own Claude API key.
+//! - to the user's own Cloudflare R2 bucket (link copied).
+//!
+//! It also translates or summarises text with the user's own Claude API key.
 
 use crate::{engines::security::{curl, curl_secret}, engines::tools::quiet, settings};
 use anyhow::{bail, Context, Result};

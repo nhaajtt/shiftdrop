@@ -118,14 +118,14 @@ fn text_and_files() {
     let json = d.join("Data.json");
     std::fs::write(&json, r#"[{"a":1,"b":"x"},{"a":2,"c":null}]"#).unwrap();
 
-    check(&[txt.clone()], conv("pdf"));
-    check(&[md.clone()], conv("html"));
+    check(std::slice::from_ref(&txt), conv("pdf"));
+    check(std::slice::from_ref(&md), conv("html"));
     check(&[md], conv("pdf"));
     let j = check(&[csv], conv("json"));
     assert!(std::fs::read_to_string(&j[0]).unwrap().contains("a, \\\"quoted\\\" note"));
-    check(&[json.clone()], conv("csv"));
-    check(&[json.clone()], Action::FormatJson { pretty: true });
-    check(&[json.clone()], Action::FormatJson { pretty: false });
+    check(std::slice::from_ref(&json), conv("csv"));
+    check(std::slice::from_ref(&json), Action::FormatJson { pretty: true });
+    check(std::slice::from_ref(&json), Action::FormatJson { pretty: false });
 
     let zip = check(&[txt.clone(), json], Action::Zip);
     let out = check(&zip, Action::Extract);
@@ -133,7 +133,7 @@ fn text_and_files() {
 
     let exe = d.join("notepad.exe");
     std::fs::copy(r"C:\Windows\System32\notepad.exe", &exe).unwrap();
-    let info = check(&[exe.clone()], Action::PeInfo);
+    let info = check(std::slice::from_ref(&exe), Action::PeInfo);
     let report = std::fs::read_to_string(&info[0]).unwrap();
     assert!(report.contains("x64") && report.contains(".dll"), "{report}");
     check(&[exe], Action::Strings);
@@ -159,20 +159,20 @@ fn security_and_dev() {
     std::fs::write(&txt, "hello").unwrap();
     assert!(super::security::disguise(&txt).is_none());
 
-    let report = check(&[exe.clone()], Action::Hashes { algo: "all".into() });
+    let report = check(std::slice::from_ref(&exe), Action::Hashes { algo: "all".into() });
     let r = std::fs::read_to_string(&report[0]).unwrap();
     assert!(r.contains("imphash") && r.contains("SHA-512"), "{r}");
     assert!(super::security::signature(Path::new(r"C:\Windows\explorer.exe")).starts_with("signed"));
-    run(&[txt.clone()], &Action::Locks, &|_| {}).unwrap();
+    run(std::slice::from_ref(&txt), &Action::Locks, &|_| {}).unwrap();
 
-    let enc = check(&[txt.clone()], Action::Encrypt { password: "s3cret-pass!".into() });
+    let enc = check(std::slice::from_ref(&txt), Action::Encrypt { password: "s3cret-pass!".into() });
     assert!(run(&enc, &Action::Decrypt { password: "wrong".into() }, &|_| {}).is_err());
     let dec = check(&enc, Action::Decrypt { password: "s3cret-pass!".into() });
     assert_eq!(std::fs::read_to_string(&dec[0]).unwrap(), "hello");
 
     let gone = d.join("gone.txt");
     std::fs::write(&gone, "secret".repeat(1000)).unwrap();
-    run(&[gone.clone()], &Action::Shred, &|_| {}).unwrap();
+    run(std::slice::from_ref(&gone), &Action::Shred, &|_| {}).unwrap();
     assert!(!gone.exists());
 
     let b64 = d.join("data.txt");
@@ -183,7 +183,7 @@ fn security_and_dev() {
 
     let yaml = d.join("conf.yaml");
     std::fs::write(&yaml, "name: demo\nports: [80, 443]\nnested:\n  on: true\n").unwrap();
-    let j = check(&[yaml.clone()], conv("json"));
+    let j = check(std::slice::from_ref(&yaml), conv("json"));
     let t = check(&j, conv("toml"));
     assert!(std::fs::read_to_string(&t[0]).unwrap().contains("ports"));
     let xml = d.join("feed.xml");
@@ -219,7 +219,7 @@ fn media_extras() {
     check(&v, Action::AudioFix { mode: "normalize".into() });
     let a = d.join("Voice.mp3");
     ffmpeg(&["-f", "lavfi", "-i", "sine=f=330:duration=3", "-c:a", "libmp3lame", a.to_str().unwrap()]);
-    check(&[a.clone()], Action::Speed { factor: 1.5 });
+    check(std::slice::from_ref(&a), Action::Speed { factor: 1.5 });
     check(&[a], Action::TargetSize { mb: 0.02 });
     let png = d.join("Slide.png");
     ffmpeg(&["-f", "lavfi", "-i", "testsrc=size=640x400", "-frames:v", "1", png.to_str().unwrap()]);
@@ -284,7 +284,7 @@ fn recipes() {
     let png = d.join("Shot.png");
     ffmpeg(&["-f", "lavfi", "-i", "testsrc=size=640x400", "-frames:v", "1", png.to_str().unwrap()]);
     let steps = vec![Action::Resize { value: 50 }, conv("jpg"), Action::StripMetadata];
-    let out = check(&[png.clone()], Action::Chain { steps });
+    let out = check(std::slice::from_ref(&png), Action::Chain { steps });
     assert_eq!(out.len(), 1);
     // only the original and the final file are left
     assert_eq!(std::fs::read_dir(&d).unwrap().count(), 2, "{out:?}");

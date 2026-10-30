@@ -32,7 +32,7 @@ fn read(src: &Path) -> Result<String> {
     let bytes = std::fs::read(src)?;
     // UTF-16 files (common for Windows logs) start with a byte-order mark
     if bytes.starts_with(&[0xFF, 0xFE]) {
-        let units: Vec<u16> = bytes[2..].chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect();
+        let units: Vec<u16> = bytes[2..].as_chunks::<2>().0.iter().map(|c| u16::from_le_bytes([c[0], c[1]])).collect();
         return Ok(String::from_utf16_lossy(&units));
     }
     let s = String::from_utf8_lossy(&bytes).into_owned();
@@ -89,7 +89,7 @@ pub fn to_html(src: &Path) -> Result<String> {
 fn edge() -> Option<PathBuf> {
     ["ProgramFiles(x86)", "ProgramFiles", "LOCALAPPDATA"]
         .iter()
-        .filter_map(|v| std::env::var_os(v))
+        .filter_map(std::env::var_os)
         .map(|d| Path::new(&d).join("Microsoft").join("Edge").join("Application").join("msedge.exe"))
         .find(|p| p.is_file())
 }

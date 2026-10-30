@@ -200,7 +200,7 @@ pub fn ffmpeg_in(dir: Option<&Path>, args: &[String], total: f64, progress: &dyn
         bail!("FFmpeg stopped responding for 5 minutes and was stopped");
     }
     if !status.success() {
-        let last = err.lines().filter(|l| !l.trim().is_empty()).last().unwrap_or("unknown error");
+        let last = err.lines().rfind(|l| !l.trim().is_empty()).unwrap_or("unknown error");
         bail!("FFmpeg failed: {last}");
     }
     Ok(())

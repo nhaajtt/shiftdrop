@@ -350,7 +350,7 @@ pub async fn read_text(path: String, max: usize) -> Result<String, String> {
     let mut buf = Vec::new();
     std::fs::File::open(&path).and_then(|f| f.take(max.min(4 << 20) as u64).read_to_end(&mut buf)).map_err(|e| e.to_string())?;
     let utf16 = |b: &[u8], be: bool| {
-        let u: Vec<u16> = b.chunks_exact(2).map(|c| if be { u16::from_be_bytes([c[0], c[1]]) } else { u16::from_le_bytes([c[0], c[1]]) }).collect();
+        let u: Vec<u16> = b.as_chunks::<2>().0.iter().map(|c| if be { u16::from_be_bytes([c[0], c[1]]) } else { u16::from_le_bytes([c[0], c[1]]) }).collect();
         String::from_utf16_lossy(&u)
     };
     Ok(match buf.as_slice() {
