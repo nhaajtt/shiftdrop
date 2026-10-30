@@ -77,7 +77,7 @@ fn zip(paths: &[PathBuf]) -> Result<PathBuf> {
     for p in paths {
         cmd.arg("-C").arg(p.parent().context("no folder")?).arg(name(p));
     }
-    let o = cmd.output()?;
+    let o = super::tools::output_within(&mut cmd, std::time::Duration::from_secs(1800))?;
     if !o.status.success() {
         bail!("zip failed: {}", String::from_utf8_lossy(&o.stderr).trim());
     }
@@ -106,7 +106,16 @@ fn extract(src: &Path) -> Result<PathBuf> {
 
 /// Extracts any archive Windows' tar understands into `dir`.
 pub fn untar(src: &Path, dir: &Path) -> Result<()> {
-    let o = tar().arg("-x").arg("-f").arg(src).arg("-C").arg(dir).output()?;
+    let o = super::tools::output_within(tar().arg("-x").arg("-f").arg(src).arg("-C").arg(dir), std::time::Duration::from_secs(1800))?;
+    if !o.status.success() {
+        bail!("can't extract: {}", String::from_utf8_lossy(&o.stderr).trim());
+    }
+    Ok(())
+}
+
+/// Extracts just one member of an archive (a .docx's document.xml), whatever else is packed in it.
+pub fn untar_one(src: &Path, dir: &Path, member: &str) -> Result<()> {
+    let o = super::tools::output_within(tar().arg("-x").arg("-f").arg(src).arg("-C").arg(dir).arg(member), std::time::Duration::from_secs(120))?;
     if !o.status.success() {
         bail!("can't extract: {}", String::from_utf8_lossy(&o.stderr).trim());
     }

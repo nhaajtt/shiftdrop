@@ -165,9 +165,9 @@ fn security_and_dev() {
     assert!(super::security::signature(Path::new(r"C:\Windows\explorer.exe")).starts_with("signed"));
     run(&[txt.clone()], &Action::Locks, &|_| {}).unwrap();
 
-    let enc = check(&[txt.clone()], Action::Encrypt { password: "s3cret!".into() });
+    let enc = check(&[txt.clone()], Action::Encrypt { password: "s3cret-pass!".into() });
     assert!(run(&enc, &Action::Decrypt { password: "wrong".into() }, &|_| {}).is_err());
-    let dec = check(&enc, Action::Decrypt { password: "s3cret!".into() });
+    let dec = check(&enc, Action::Decrypt { password: "s3cret-pass!".into() });
     assert_eq!(std::fs::read_to_string(&dec[0]).unwrap(), "hello");
 
     let gone = d.join("gone.txt");
@@ -312,4 +312,48 @@ fn docx_to_markdown() {
     let md = check(&[docx], conv("md"));
     let t = std::fs::read_to_string(&md[0]).unwrap();
     assert!(t.contains("# Báo cáo") && t.contains("**bold**") && t.contains("- item one") && t.contains("| A | B |"), "{t}");
+}
+
+#[test]
+fn docx_keeps_literal_marks_and_ignores_tab_stops() {
+    let d = workdir("docx-marks");
+    let w = d.join("src").join("word");
+    std::fs::create_dir_all(&w).unwrap();
+    std::fs::write(w.join("document.xml"), r#"<?xml version="1.0"?><w:document xmlns:w="x"><w:body>
+<w:p><w:pPr><w:tabs><w:tab w:val="left" w:pos="720"/></w:tabs></w:pPr><w:r><w:t>__init__ and a****b</w:t></w:r></w:p>
+<w:p><w:r><w:t>left</w:t><w:tab/><w:t>right</w:t></w:r></w:p>
+</w:body></w:document>"#).unwrap();
+    let docx = d.join("Marks.docx");
+    assert!(Command::new(r"C:\Windows\System32\tar.exe").args(["-a", "-c", "-f"]).arg(&docx).arg("-C").arg(d.join("src")).arg("word").status().unwrap().success());
+    let md = check(&[docx], conv("md"));
+    let t = std::fs::read_to_string(&md[0]).unwrap();
+    assert!(t.starts_with(r"\_\_init\_\_ and a\*\*\*\*b") && t.contains("left\tright"), "{t}");
+}
+
+#[test]
+fn failed_unit_leaves_no_partial_output() {
+    let d = workdir("discard");
+    let src = d.join("x.txt");
+    std::fs::write(&src, b"original").unwrap();
+    crate::naming::begin();
+    let out = crate::naming::out_path(&src, Some("Compressed"), "pdf");
+    std::fs::write(&out, b"half").unwrap();
+    let dir = crate::naming::out_dir(&src, "pages").unwrap();
+    std::fs::write(dir.join("p1.png"), b"x").unwrap();
+    crate::naming::discard();
+    assert!(!out.exists() && !dir.exists() && src.exists());
+}
+
+#[test]
+fn rename_puts_everything_back_when_one_fails() {
+    let d = workdir("rename");
+    let (a, b) = (d.join("a.txt"), d.join("b.txt"));
+    std::fs::write(&a, b"a").unwrap();
+    std::fs::write(&b, b"b").unwrap();
+    let s = |p: &Path| p.display().to_string();
+    // the second target's folder doesn't exist, so it fails after the first was renamed
+    let pairs = vec![(s(&a), s(&d.join("a2.txt"))), (s(&b), s(&d.join("no such folder").join("b2.txt")))];
+    assert!(tauri::async_runtime::block_on(crate::shell::rename_files(pairs)).is_err());
+    assert!(a.exists() && b.exists() && !d.join("a2.txt").exists());
+    assert_eq!(std::fs::read_dir(&d).unwrap().count(), 2, "temporary names left behind");
 }

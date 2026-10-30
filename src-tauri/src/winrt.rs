@@ -23,7 +23,12 @@ fn init() {
 fn bitmap(path: &Path) -> Result<SoftwareBitmap> {
     init();
     let full = std::fs::canonicalize(path)?;
-    let full = full.to_string_lossy().trim_start_matches(r"\\?\").to_string();
+    let full = full.to_string_lossy();
+    // canonical paths start with \\?\ (\\?\UNC\ on network shares), which WinRT won't take
+    let full = match full.strip_prefix(r"\\?\UNC\") {
+        Some(rest) => format!(r"\\{rest}"),
+        None => full.trim_start_matches(r"\\?\").to_string(),
+    };
     let file = StorageFile::GetFileFromPathAsync(&HSTRING::from(full))?.join()?;
     let stream = file.OpenAsync(FileAccessMode::Read)?.join()?;
     let dec = BitmapDecoder::CreateAsync(&stream)?.join().context("Windows has no codec for this image")?;

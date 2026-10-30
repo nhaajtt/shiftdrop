@@ -7,6 +7,7 @@ use anyhow::{bail, Context, Result};
 use std::{
     path::{Path, PathBuf},
     sync::OnceLock,
+    time::Duration,
 };
 
 const NEED: &str = "Office documents need Microsoft Office or the free LibreOffice (libreoffice.org)";
@@ -35,13 +36,23 @@ pub fn run(src: &Path, action: &Action, progress: Progress) -> Result<Vec<PathBu
     Ok(vec![out])
 }
 
+/// Longest a single document may take before Office or LibreOffice is stopped.
+const LIMIT: Duration = Duration::from_secs(180);
+
 fn convert(src: &Path, out: &Path, to: &str) -> Result<()> {
+    let mut office_err = None;
     if let Some(app) = ms_office_app(src) {
-        if ms_office(app, src, out, to).is_ok() && out.is_file() {
-            return Ok(());
+        match ms_office(app, src, out, to) {
+            Ok(()) if out.is_file() => return Ok(()),
+            Ok(()) => office_err = Some(anyhow::anyhow!("{app} didn't produce the file")),
+            Err(e) => office_err = Some(e),
         }
+        let _ = std::fs::remove_file(out);
     }
-    let soffice = libreoffice().context(NEED)?;
+    let Some(soffice) = libreoffice() else {
+        // Office is installed but failed: its reason is more useful than "install LibreOffice"
+        return Err(office_err.unwrap_or_else(|| anyhow::anyhow!(NEED)));
+    };
     let dir = temp_file("lo");
     std::fs::create_dir_all(&dir)?;
     let filter = match to {
@@ -49,11 +60,20 @@ fn convert(src: &Path, out: &Path, to: &str) -> Result<()> {
         "txt" => "txt:Text (encoded):UTF8",
         other => other,
     };
-    let o = super::tools::quiet(soffice)
-        .args(["--headless", "--norestore", "--convert-to", filter, "--outdir"])
-        .arg(&dir)
-        .arg(src)
-        .output()?;
+    // a profile of our own, so a LibreOffice the user has open doesn't swallow the request
+    let profile = std::env::temp_dir().join("shiftdrop").join("lo-profile");
+    let profile_url = format!("-env:UserInstallation=file:///{}", profile.display().to_string().replace('\\', "/").replace(' ', "%20"));
+    let o = super::tools::output_within(
+        super::tools::quiet(soffice).arg(profile_url).args(["--headless", "--norestore", "--nologo", "--convert-to", filter, "--outdir"]).arg(&dir).arg(src),
+        LIMIT,
+    );
+    let o = match o {
+        Ok(o) => o,
+        Err(e) => {
+            let _ = std::fs::remove_dir_all(&dir);
+            return Err(e.context("LibreOffice couldn't convert it"));
+        }
+    };
     let made = std::fs::read_dir(&dir)?.flatten().map(|e| e.path()).find(|p| p.is_file());
     let r = match made {
         Some(f) => std::fs::rename(&f, out).or_else(|_| std::fs::copy(&f, out).map(|_| ())).map_err(Into::into),
@@ -102,22 +122,51 @@ fn installed(app: &str) -> bool {
 /// Drives Office through COM from PowerShell; paths go in environment variables, never in the script.
 /// AutomationSecurity=3 (force disable) keeps macros in the document from running: Office
 /// otherwise enables them for automation.
+/// A wrong password ('-') is given on purpose: a protected file then fails at once instead of
+/// waiting on a hidden password prompt. Office is always closed again, also after an error.
 fn ms_office(app: &str, src: &Path, out: &Path, to: &str) -> Result<()> {
-    let script = match (app, to) {
-        ("Word", "pdf") => "$a=New-Object -ComObject Word.Application;$a.AutomationSecurity=3;$a.Visible=$false;$d=$a.Documents.Open($env:SD_IN,$false,$true);$d.ExportAsFixedFormat($env:SD_OUT,17);$d.Close($false);$a.Quit()",
-        ("Word", "docx") => "$a=New-Object -ComObject Word.Application;$a.AutomationSecurity=3;$a.Visible=$false;$d=$a.Documents.Open($env:SD_IN,$false,$true);$d.SaveAs2($env:SD_OUT,16);$d.Close($false);$a.Quit()",
-        ("Word", "txt") => "$a=New-Object -ComObject Word.Application;$a.AutomationSecurity=3;$a.Visible=$false;$d=$a.Documents.Open($env:SD_IN,$false,$true);$d.SaveAs2($env:SD_OUT,7,$false,'',$false,'',$false,$false,$false,$false,$false,65001);$d.Close($false);$a.Quit()",
-        ("Excel", "pdf") => "$a=New-Object -ComObject Excel.Application;$a.AutomationSecurity=3;$a.DisplayAlerts=$false;$b=$a.Workbooks.Open($env:SD_IN,0,$true);$b.ExportAsFixedFormat(0,$env:SD_OUT);$b.Close($false);$a.Quit()",
-        ("PowerPoint", "pdf") => "$a=New-Object -ComObject PowerPoint.Application;$a.AutomationSecurity=3;$p=$a.Presentations.Open($env:SD_IN,$true,$false,$false);$p.SaveAs($env:SD_OUT,32);$p.Close();$a.Quit()",
+    let (open, save, close) = match (app, to) {
+        ("Word", _) => (
+            "$a=New-Object -ComObject Word.Application;$a.DisplayAlerts=0;$a.AutomationSecurity=3;$a.Visible=$false;$d=$a.Documents.Open($env:SD_IN,$false,$true,$false,'-','-')",
+            match to {
+                "pdf" => "$d.ExportAsFixedFormat($env:SD_OUT,17)",
+                "docx" => "$d.SaveAs2($env:SD_OUT,16)",
+                "txt" => "$d.SaveAs2($env:SD_OUT,7,$false,'',$false,'',$false,$false,$false,$false,$false,65001)",
+                _ => bail!("Word can't make .{to}"),
+            },
+            "$d.Close($false)",
+        ),
+        ("Excel", "pdf") => (
+            "$a=New-Object -ComObject Excel.Application;$a.DisplayAlerts=$false;$a.AutomationSecurity=3;$d=$a.Workbooks.Open($env:SD_IN,0,$true,[Type]::Missing,'-')",
+            "$d.ExportAsFixedFormat(0,$env:SD_OUT)",
+            "$d.Close($false)",
+        ),
+        // PowerPoint runs once per user: if it is already open we would take over (and quit) the user's own
+        ("PowerPoint", "pdf") => (
+            "if(Get-Process POWERPNT -EA SilentlyContinue){throw 'PowerPoint is open. Close it and try again.'};$a=New-Object -ComObject PowerPoint.Application;$a.AutomationSecurity=3;$d=$a.Presentations.Open($env:SD_IN,$true,$false,$false)",
+            "$d.SaveAs($env:SD_OUT,32)",
+            "$d.Close()",
+        ),
         _ => bail!("{app} can't make .{to}"),
     };
-    let o = super::tools::quiet(Path::new("powershell"))
-        .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script])
-        .env("SD_IN", src)
-        .env("SD_OUT", out)
-        .output()?;
+    let script = format!(
+        "$ErrorActionPreference='Stop';$a=$null;$d=$null;$f=$null;try{{{open};{save}}}catch{{$f=$_.Exception.Message}}finally{{if($d){{try{{{close}}}catch{{}}}};if($a){{try{{$a.Quit()}}catch{{}}}}}};if($f){{[Console]::Error.WriteLine($f);exit 1}}"
+    );
+    let o = super::tools::output_within(
+        super::tools::quiet(Path::new("powershell"))
+            .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", &script])
+            .env("SD_IN", src)
+            .env("SD_OUT", out),
+        LIMIT,
+    )
+    .with_context(|| format!("{app} couldn't convert it"))?;
     if !o.status.success() {
-        bail!("{app} failed: {}", String::from_utf8_lossy(&o.stderr).lines().next().unwrap_or(""));
+        let err = String::from_utf8_lossy(&o.stderr);
+        let first = err.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("unknown error");
+        if first.to_lowercase().contains("password") {
+            bail!("{app} failed: the file is password-protected. Remove the password in {app} first.");
+        }
+        bail!("{app} failed: {first}");
     }
     Ok(())
 }

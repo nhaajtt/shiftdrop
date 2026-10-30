@@ -1,4 +1,4 @@
-use super::{image as img, pdfwrite, tools, Action, Level, Progress};
+use super::{image as img, note, pdfwrite, tools, Action, Level, Progress};
 use crate::naming::{kind, out_dir, out_path, stem, unique, Kind};
 use anyhow::{anyhow, bail, Result};
 use image::{DynamicImage, Rgba};
@@ -30,7 +30,8 @@ fn render_pages(doc: &PdfDocument, dpi: f32, progress: Progress, mut each: impl 
     let n = doc.pages().len() as usize;
     for (i, page) in doc.pages().iter().enumerate() {
         let size = (page.width().value as f64, page.height().value as f64);
-        let bmp = page.render_with_config(&PdfRenderConfig::new().scale_page_by_factor(dpi / 72.0))?;
+        // a poster-sized or broken page box must not ask for gigabytes of pixels
+        let bmp = page.render_with_config(&PdfRenderConfig::new().scale_page_by_factor(dpi / 72.0).set_maximum_width(10000).set_maximum_height(10000))?;
         each(i, bmp.as_image()?, size)?;
         progress((i + 1) as f32 / n as f32);
     }
@@ -40,6 +41,9 @@ fn render_pages(doc: &PdfDocument, dpi: f32, progress: Progress, mut each: impl 
 pub fn run(src: &Path, action: &Action, progress: Progress) -> Result<Vec<PathBuf>> {
     let doc = load(src)?;
     let n = doc.pages().len() as usize;
+    if n == 0 {
+        bail!("this PDF has no pages");
+    }
     match action {
         Action::Convert { to } if matches!(to.as_str(), "jpg" | "png" | "webp") => {
             let mut outs = Vec::new();
@@ -68,6 +72,13 @@ pub fn run(src: &Path, action: &Action, progress: Progress) -> Result<Vec<PathBu
             })?;
             let out = out_path(src, Some("Compressed"), "pdf");
             pdfwrite::write(&out, &pages)?;
+            // pages are redrawn as pictures: a text PDF can come out bigger, and it loses its text
+            let (before, after) = (std::fs::metadata(src)?.len(), std::fs::metadata(&out)?.len());
+            if after >= before {
+                let _ = std::fs::remove_file(&out);
+                bail!("this PDF is already as small as it gets");
+            }
+            note("Pages were redrawn as pictures: text can no longer be selected");
             Ok(vec![out])
         }
         Action::Split => {
@@ -152,7 +163,7 @@ pub async fn pdf_thumbs(path: String, width: u32) -> Result<Vec<String>, String>
         let doc = load(Path::new(&path))?;
         let mut out = Vec::new();
         for page in doc.pages().iter() {
-            let im = page.render_with_config(&PdfRenderConfig::new().set_target_width(width as _))?.as_image()?;
+            let im = page.render_with_config(&PdfRenderConfig::new().set_target_width(width.clamp(32, 800) as _).set_maximum_height(1600))?.as_image()?;
             out.push(format!("data:image/jpeg;base64,{}", base64::engine::general_purpose::STANDARD.encode(img::jpeg_bytes(&im, 80)?)));
         }
         Ok(out)

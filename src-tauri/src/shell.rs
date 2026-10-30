@@ -147,14 +147,38 @@ pub async fn rename_files(pairs: Vec<(String, String)>) -> Result<usize, String>
             return Err(format!("{} already exists", b.file_name().unwrap_or_default().to_string_lossy()));
         }
     }
+    if sources.len() != pairs.len() {
+        return Err("the same file is listed twice".into());
+    }
+    if let Some((a, _)) = pairs.iter().find(|(a, _)| !a.exists()) {
+        return Err(format!("{} no longer exists", a.display()));
+    }
+    // two steps (via temporary names) so names can be swapped; any failure puts everything back
+    let mut done: Vec<(PathBuf, PathBuf)> = Vec::new(); // (now at, originally at)
+    let undo = |done: &mut Vec<(PathBuf, PathBuf)>| {
+        for (now, was) in done.drain(..).rev() {
+            let _ = std::fs::rename(&now, &was);
+        }
+    };
     let mut temps = Vec::new();
     for (i, (a, _)) in pairs.iter().enumerate() {
         let t = a.with_file_name(format!(".shiftdrop-rename-{}-{i}", std::process::id()));
-        std::fs::rename(a, &t).map_err(|e| format!("{}: {e}", a.display()))?;
+        if let Err(e) = std::fs::rename(a, &t) {
+            undo(&mut done);
+            return Err(format!("{}: {e}", a.file_name().unwrap_or_default().to_string_lossy()));
+        }
+        done.push((t.clone(), a.clone()));
         temps.push(t);
     }
     for ((_, b), t) in pairs.iter().zip(&temps) {
-        std::fs::rename(t, b).map_err(|e| format!("{}: {e}", b.display()))?;
+        if let Err(e) = std::fs::rename(t, b) {
+            undo(&mut done);
+            return Err(format!("{}: {e}", b.file_name().unwrap_or_default().to_string_lossy()));
+        }
+        // undoing this one means moving it from its new name straight back
+        if let Some(d) = done.iter_mut().find(|d| &d.0 == t) {
+            d.0 = b.clone();
+        }
     }
     Ok(pairs.len())
 }

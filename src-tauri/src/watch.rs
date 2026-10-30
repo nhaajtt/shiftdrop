@@ -70,19 +70,42 @@ pub fn start(app: AppHandle) {
 /// Files arriving in a watched folder can come from anyone (a download, a share). Nothing that
 /// runs commands, destroys data or sends the file off this PC is done without the user present.
 fn unattended_ok(a: &Action) -> bool {
+    // allow-list: an action added later stays off for watched folders until it is put here
     match a {
         Action::Chain { steps } => steps.iter().all(unattended_ok),
-        Action::Custom { .. }
-        | Action::Shred
-        | Action::Sandbox
-        | Action::Encrypt { .. }
-        | Action::Decrypt { .. }
-        | Action::Protect { .. }
-        | Action::Unprotect { .. }
-        | Action::VirusTotal
-        | Action::AskClaude { .. }
-        | Action::Tool { .. } => false,
-        _ => true,
+        Action::Convert { .. }
+        | Action::Compress { .. }
+        | Action::Resize { .. }
+        | Action::Rotate { .. }
+        | Action::StripMetadata
+        | Action::ExtractAudio { .. }
+        | Action::Mute
+        | Action::Crop { .. }
+        | Action::AddBg { .. }
+        | Action::Trim { .. }
+        | Action::FormatJson { .. }
+        | Action::Zip
+        | Action::Hash
+        | Action::Hashes { .. }
+        | Action::Identify
+        | Action::TargetSize { .. }
+        | Action::Speed { .. }
+        | Action::Flip { .. }
+        | Action::Thumbnail
+        | Action::AudioFix { .. }
+        | Action::Ocr { .. }
+        | Action::QrRead
+        | Action::IconSet { .. }
+        | Action::Palette
+        | Action::Watermark { .. }
+        | Action::Vectorize
+        | Action::RemoveBg
+        | Action::BlurFaces
+        | Action::Upscale { .. }
+        | Action::PageNumbers
+        | Action::PdfText
+        | Action::ExtractImages => true,
+        _ => false,
     }
 }
 
@@ -95,4 +118,17 @@ fn ignorable(p: &PathBuf) -> bool {
 #[tauri::command]
 pub async fn folder_exists(path: String) -> bool {
     std::path::Path::new(&path).is_dir()
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::engines::Action;
+
+    #[test]
+    fn only_safe_actions_run_unattended() {
+        assert!(super::unattended_ok(&Action::Convert { to: "png".into() }));
+        assert!(super::unattended_ok(&Action::Chain { steps: vec![Action::StripMetadata, Action::Zip] }));
+        assert!(!super::unattended_ok(&Action::Shred));
+        assert!(!super::unattended_ok(&Action::Chain { steps: vec![Action::Zip, Action::Custom { command: "x".into() }] }));
+    }
 }

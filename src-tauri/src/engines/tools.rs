@@ -2,8 +2,12 @@ use anyhow::{anyhow, bail, Context, Result};
 use std::{
     io::{BufRead, BufReader, Read},
     path::{Path, PathBuf},
-    process::{Command, Stdio},
-    sync::OnceLock,
+    process::{Command, Output, Stdio},
+    sync::{
+        atomic::{AtomicBool, AtomicU64, Ordering},
+        Arc, OnceLock,
+    },
+    time::{Duration, Instant},
 };
 
 static BIN_DIR: OnceLock<PathBuf> = OnceLock::new();
@@ -74,9 +78,84 @@ pub fn has_audio(file: &Path) -> bool {
 }
 
 pub fn video_size(file: &Path) -> Option<(u32, u32)> {
-    let s = probe(&["-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=p=0:s=x"], file).ok()?;
-    let (w, h) = s.lines().next()?.split_once('x')?;
-    Some((w.trim().parse().ok()?, h.trim().parse().ok()?))
+    let s = probe(&["-select_streams", "v:0", "-show_entries", "stream=width,height:stream_tags=rotate:stream_side_data=rotation", "-of", "json"], file).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&s).ok()?;
+    let st = &v["streams"][0];
+    let (w, h) = (st["width"].as_u64()? as u32, st["height"].as_u64()? as u32);
+    // phones store portrait video sideways with a rotation flag; report the size as it plays
+    let rot = st["side_data_list"]
+        .as_array()
+        .and_then(|l| l.iter().find_map(|d| d["rotation"].as_i64()))
+        .or_else(|| st["tags"]["rotate"].as_str().and_then(|r| r.parse().ok()))
+        .unwrap_or(0);
+    Some(if rot.rem_euclid(180) == 90 { (h, w) } else { (w, h) })
+}
+
+/// Ends a program and everything it started (Office, Edge and LibreOffice spawn helpers).
+pub fn kill_tree(pid: u32) {
+    let _ = quiet(Path::new("taskkill")).args(["/F", "/T", "/PID", &pid.to_string()]).output();
+}
+
+/// Stops a program that has gone quiet for `idle` (stuck on a hidden dialog, a damaged file…).
+/// `touch()` marks progress; dropping the guard stops watching.
+pub struct Watchdog {
+    done: Arc<AtomicBool>,
+    fired: Arc<AtomicBool>,
+    last: Arc<AtomicU64>,
+    start: Instant,
+}
+
+impl Watchdog {
+    pub fn new(pid: u32, idle: Duration) -> Self {
+        let (done, fired, last, start) = (Arc::new(AtomicBool::new(false)), Arc::new(AtomicBool::new(false)), Arc::new(AtomicU64::new(0)), Instant::now());
+        let (d, f, l) = (done.clone(), fired.clone(), last.clone());
+        std::thread::spawn(move || {
+            while !d.load(Ordering::Relaxed) {
+                std::thread::sleep(Duration::from_millis(250));
+                let quiet_for = start.elapsed().as_millis() as u64 - l.load(Ordering::Relaxed);
+                if !d.load(Ordering::Relaxed) && quiet_for > idle.as_millis() as u64 {
+                    f.store(true, Ordering::Relaxed);
+                    kill_tree(pid);
+                    break;
+                }
+            }
+        });
+        Self { done, fired, last, start }
+    }
+
+    pub fn touch(&self) {
+        self.last.store(self.start.elapsed().as_millis() as u64, Ordering::Relaxed);
+    }
+
+    pub fn fired(&self) -> bool {
+        self.fired.load(Ordering::Relaxed)
+    }
+}
+
+impl Drop for Watchdog {
+    fn drop(&mut self) {
+        self.done.store(true, Ordering::Relaxed);
+    }
+}
+
+/// Like `Command::output`, but the program is stopped after `limit`.
+pub fn output_within(cmd: &mut Command, limit: Duration) -> Result<Output> {
+    let child = cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
+    let dog = Watchdog::new(child.id(), limit);
+    let out = child.wait_with_output()?;
+    if dog.fired() {
+        bail!("it took longer than {} and was stopped", human(limit));
+    }
+    Ok(out)
+}
+
+fn human(d: Duration) -> String {
+    let s = d.as_secs();
+    if s >= 120 {
+        format!("{} minutes", s / 60)
+    } else {
+        format!("{s} seconds")
+    }
 }
 
 /// Runs ffmpeg with `args` (inputs and outputs included). `total` seconds drives progress.
@@ -99,6 +178,8 @@ pub fn ffmpeg_in(dir: Option<&Path>, args: &[String], total: f64, progress: &dyn
         .spawn()
         .map_err(|_| anyhow!("Video and audio need the FFmpeg add-on: Settings › Add-ons"))?;
 
+    // ffmpeg reports progress twice a second; silence for minutes means it is stuck
+    let dog = Watchdog::new(child.id(), Duration::from_secs(300));
     let mut stderr = child.stderr.take().unwrap();
     let err_thread = std::thread::spawn(move || {
         let mut s = String::new();
@@ -106,6 +187,7 @@ pub fn ffmpeg_in(dir: Option<&Path>, args: &[String], total: f64, progress: &dyn
         s
     });
     for line in BufReader::new(child.stdout.take().unwrap()).lines().map_while(Result::ok) {
+        dog.touch();
         if let Some(v) = line.strip_prefix("out_time_us=") {
             if let (Ok(us), true) = (v.parse::<f64>(), total > 0.0) {
                 progress(((us / 1e6) / total).clamp(0.0, 1.0) as f32);
@@ -114,6 +196,9 @@ pub fn ffmpeg_in(dir: Option<&Path>, args: &[String], total: f64, progress: &dyn
     }
     let status = child.wait()?;
     let err = err_thread.join().unwrap_or_default();
+    if dog.fired() {
+        bail!("FFmpeg stopped responding for 5 minutes and was stopped");
+    }
     if !status.success() {
         let last = err.lines().filter(|l| !l.trim().is_empty()).last().unwrap_or("unknown error");
         bail!("FFmpeg failed: {last}");

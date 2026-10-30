@@ -86,13 +86,19 @@ pub fn run(src: &Path, action: &Action, progress: Progress) -> Result<Vec<PathBu
             let mut scanned = 0;
             for (i, page) in doc.pages().iter().enumerate() {
                 let mut t = page.text().map(|t| t.all()).unwrap_or_default();
-                if t.trim().len() < 8 {
-                    // a scanned page: read it with OCR
+                if t.trim().chars().count() < 8 {
+                    // probably a scanned page: read it with OCR, but keep what text there was if OCR finds nothing
                     let png = temp_file("png");
-                    page.render_with_config(&PdfRenderConfig::new().scale_page_by_factor(200.0 / 72.0))?.as_image()?.save(&png)?;
-                    t = super::imagex::ocr_text(&png).unwrap_or_default();
+                    let cfg = PdfRenderConfig::new().scale_page_by_factor(200.0 / 72.0).set_maximum_width(5000).set_maximum_height(5000);
+                    if page.render_with_config(&cfg).ok().and_then(|r| r.as_image().ok()).is_some_and(|im| im.save(&png).is_ok()) {
+                        if let Ok(read) = super::imagex::ocr_text(&png) {
+                            if read.trim().chars().count() > t.trim().chars().count() {
+                                t = read;
+                                scanned += 1;
+                            }
+                        }
+                    }
                     let _ = std::fs::remove_file(png);
-                    scanned += 1;
                 }
                 text += &format!("--- Page {} ---\n{}\n\n", i + 1, t.trim());
                 progress((i + 1) as f32 / n as f32);
@@ -197,13 +203,14 @@ fn qpdf() -> Result<PathBuf> {
 }
 
 fn protect(src: &Path, password: &str) -> Result<PathBuf> {
-    if password.len() < 4 {
+    if password.chars().count() < 8 {
         bail!("password is too short");
     }
     let out = out_path(src, Some("Protected"), "pdf");
     // owner password = user password: anyone with it can also print and copy
-    let o = super::tools::quiet(&qpdf()?).arg("--encrypt").arg(password).arg(password).args(["256", "--"]).arg(src).arg(&out).output()?;
-    if !o.status.success() {
+    let o = qpdf_with_secret(&["--encrypt", password, password, "256", "--"], src, &out)?;
+    // qpdf exits 3 for warnings but still writes the file
+    if !matches!(o.status.code(), Some(0 | 3)) || !out.is_file() {
         bail!("{}", String::from_utf8_lossy(&o.stderr).lines().last().unwrap_or("qpdf failed"));
     }
     Ok(out)
@@ -211,11 +218,27 @@ fn protect(src: &Path, password: &str) -> Result<PathBuf> {
 
 fn unprotect(src: &Path, password: &str) -> Result<PathBuf> {
     let out = out_path(src, Some("Unlocked"), "pdf");
-    let o = super::tools::quiet(&qpdf()?).arg(format!("--password={password}")).arg("--decrypt").arg(src).arg(&out).output()?;
-    // qpdf exits 3 for warnings but still writes the file
-    if !out.is_file() {
+    let pw = format!("--password={password}");
+    let o = qpdf_with_secret(&[&pw, "--decrypt"], src, &out)?;
+    if !matches!(o.status.code(), Some(0 | 3)) || !out.is_file() {
         let msg = String::from_utf8_lossy(&o.stderr);
         bail!("{}", if msg.contains("invalid password") { "wrong password" } else { msg.lines().last().unwrap_or("qpdf failed") });
     }
     Ok(out)
+}
+
+/// Passwords go to qpdf in an argument file (in the user's own temp folder, deleted right after),
+/// never on the command line where any program can read them.
+fn qpdf_with_secret(args: &[&str], src: &Path, out: &Path) -> Result<std::process::Output> {
+    if args.iter().any(|a| a.contains(['\n', '\r'])) {
+        bail!("the password can't contain line breaks");
+    }
+    let file = temp_file("args");
+    std::fs::write(&file, args.join("\n"))?;
+    let r = super::tools::output_within(
+        super::tools::quiet(&qpdf()?).arg(format!("@{}", file.display())).arg(src).arg(out),
+        std::time::Duration::from_secs(300),
+    );
+    let _ = std::fs::remove_file(&file);
+    r
 }

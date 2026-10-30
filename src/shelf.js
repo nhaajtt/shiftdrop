@@ -10,7 +10,13 @@ initTheme();
 
 // Files waiting on the shelf; kept across restarts.
 const KEY = 'shiftdrop.shelf';
-let files = JSON.parse(localStorage.getItem(KEY) || '[]');
+let files = [];
+try {
+  const saved = JSON.parse(localStorage.getItem(KEY) || '[]');
+  if (Array.isArray(saved)) files = saved.filter((f) => typeof f === 'string');
+} catch {
+  // a damaged list starts empty instead of breaking the shelf
+}
 const sel = new Set();
 const $ = (id) => document.getElementById(id);
 const name = (p) => p.split(/[\\/]/).pop();
@@ -92,6 +98,8 @@ getCurrentWebview().onDragDropEvent((e) => {
   }
 });
 
-listen('shelf:add', ({ payload }) => add(payload));
-invoke('shelf_take').then(add);
+// listen first, then take what is waiting, so nothing dropped in between is lost
+listen('shelf:add', ({ payload }) => add(payload))
+  .then(() => invoke('shelf_take'))
+  .then(add);
 render();

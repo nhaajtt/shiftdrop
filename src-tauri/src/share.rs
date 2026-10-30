@@ -6,7 +6,7 @@
 use crate::{engines::security::{curl, curl_secret}, engines::tools::quiet, settings};
 use anyhow::{bail, Context, Result};
 use std::{
-    io::{BufRead, BufReader, Read, Write},
+    io::{Read, Write},
     net::{TcpListener, UdpSocket},
     path::{Path, PathBuf},
     time::{Duration, Instant},
@@ -70,8 +70,26 @@ fn lan(paths: Vec<String>) -> Result<LanShare> {
     Ok(LanShare { url, qr, minutes: LAN_MINUTES })
 }
 
+/// The first request line, read within 5 seconds and at most 2 KB, so a client that trickles bytes
+/// or never ends its line can't hold the only connection slot or fill memory.
+fn request_line(s: &std::net::TcpStream) -> Option<String> {
+    let until = Instant::now() + Duration::from_secs(5);
+    let mut line = Vec::new();
+    let mut byte = [0u8; 1];
+    let mut r = s;
+    while line.len() < 2048 && Instant::now() < until {
+        match r.read(&mut byte) {
+            Ok(1) if byte[0] == b'\n' => return String::from_utf8(line).ok(),
+            Ok(1) => line.push(byte[0]),
+            _ => return None,
+        }
+    }
+    None
+}
+
 fn serve(listener: TcpListener, file: PathBuf, prefix: String, life: Duration) {
-    let end = Instant::now() + life;
+    let mut end = Instant::now() + life;
+    let mut delivered = false;
     let _ = listener.set_nonblocking(true);
     while Instant::now() < end {
         let Ok((mut s, _)) = listener.accept() else {
@@ -79,13 +97,10 @@ fn serve(listener: TcpListener, file: PathBuf, prefix: String, life: Duration) {
             continue;
         };
         let _ = s.set_nonblocking(false);
-        let _ = s.set_read_timeout(Some(Duration::from_secs(10)));
+        let _ = s.set_read_timeout(Some(Duration::from_secs(5)));
         // a client that stops reading must not hold the only connection slot forever
-        let _ = s.set_write_timeout(Some(Duration::from_secs(60)));
-        let mut line = String::new();
-        if BufReader::new(&s).read_line(&mut line).is_err() {
-            continue;
-        }
+        let _ = s.set_write_timeout(Some(Duration::from_secs(30)));
+        let Some(line) = request_line(&s) else { continue };
         let path = line.split_whitespace().nth(1).unwrap_or("");
         if !line.starts_with("GET ") || !path.starts_with(&prefix) {
             let _ = s.write_all(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
@@ -97,10 +112,19 @@ fn serve(listener: TcpListener, file: PathBuf, prefix: String, life: Duration) {
         let head = format!("HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: {len}\r\nContent-Disposition: attachment; filename*=UTF-8''{}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n", urlenc(&name));
         if s.write_all(head.as_bytes()).is_ok() {
             let mut buf = vec![0u8; 1 << 16];
+            let mut sent = 0u64;
             while let Ok(n) = f.read(&mut buf) {
-                if n == 0 || s.write_all(&buf[..n]).is_err() {
+                // the link's time limit holds during a slow download too
+                if n == 0 || Instant::now() > end + Duration::from_secs(120) || s.write_all(&buf[..n]).is_err() {
                     break;
                 }
+                sent += n as u64;
+            }
+            // once the phone has the file the link closes; a minute's grace covers browsers
+            // that hand the download to a download manager which fetches it again
+            if sent == len && !delivered {
+                delivered = true;
+                end = end.min(Instant::now() + Duration::from_secs(60));
             }
         }
     }

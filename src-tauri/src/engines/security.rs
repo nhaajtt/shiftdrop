@@ -242,16 +242,21 @@ fn sandbox(src: &Path) -> Result<()> {
     if !sandbox_available() {
         bail!("Windows Sandbox needs Windows Pro or Enterprise with the feature turned on");
     }
-    let dir = src.parent().context("no folder")?;
+    // only a copy of this one file is shared, not the rest of its folder (e.g. all of Downloads)
+    let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_millis();
+    let dir = std::env::temp_dir().join("shiftdrop").join(format!("sandbox-{stamp}"));
+    std::fs::create_dir_all(&dir)?;
+    std::fs::copy(src, dir.join(name(src)))?;
     let esc = |s: &str| s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;");
-    let inside = format!("C:\\Users\\WDAGUtilityAccount\\Desktop\\{}", dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or("files".into()));
+    let inside = "C:\\Users\\WDAGUtilityAccount\\Desktop\\Sample";
     let wsb = format!(
-        "<Configuration><Networking>Disable</Networking><MappedFolders><MappedFolder><HostFolder>{}</HostFolder><SandboxFolder>{}</SandboxFolder><ReadOnly>true</ReadOnly></MappedFolder></MappedFolders><LogonCommand><Command>explorer.exe \"{}\"</Command></LogonCommand></Configuration>",
+        "<Configuration><Networking>Disable</Networking><ClipboardRedirection>Disable</ClipboardRedirection><VGpu>Disable</VGpu><AudioInput>Disable</AudioInput><VideoInput>Disable</VideoInput><PrinterRedirection>Disable</PrinterRedirection><MappedFolders><MappedFolder><HostFolder>{}</HostFolder><SandboxFolder>{}</SandboxFolder><ReadOnly>true</ReadOnly></MappedFolder></MappedFolders><LogonCommand><Command>explorer.exe \"{}\"</Command></LogonCommand></Configuration>",
         esc(&dir.display().to_string()),
-        esc(&inside),
+        esc(inside),
         esc(&format!("{inside}\\{}", name(src)))
     );
-    let file = crate::naming::temp_file("wsb");
+    // Windows Sandbox reads this after the job has finished, so it isn't a job temp file
+    let file = dir.with_extension("wsb");
     std::fs::write(&file, wsb)?;
     std::process::Command::new("cmd").args(["/c", "start", ""]).arg(&file).spawn()?;
     note("Opening in Windows Sandbox (no network, read-only)");
@@ -261,10 +266,12 @@ fn sandbox(src: &Path) -> Result<()> {
 // --- Encryption (age format: open with any age tool) -----------------------------------------
 
 fn encrypt(src: &Path, password: &str) -> Result<PathBuf> {
-    if password.len() < 4 {
+    // the file can be attacked offline at leisure, so short passwords are refused
+    if password.chars().count() < 8 {
         bail!("password is too short");
     }
     let out = PathBuf::from(format!("{}.age", out_path(src, None, &ext(src)).display()));
+    crate::naming::claim(&out);
     let out = if out.exists() { crate::naming::unique(src.parent().unwrap(), &name(src), "age") } else { out };
     let enc = age::Encryptor::with_user_passphrase(age::secrecy::SecretString::from(password.to_owned()));
     let mut w = enc.wrap_output(std::fs::File::create(&out)?)?;
@@ -294,8 +301,21 @@ fn shred(p: &Path) -> Result<()> {
     if !meta.is_file() || meta.file_type().is_symlink() {
         bail!("{} is a link or folder, not a plain file", name(p));
     }
+    let mut opts = std::fs::OpenOptions::new();
+    opts.write(true);
+    // open the link itself, never what it points to, even if the file was swapped for a link
+    // after the check above; then check again on the open handle
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        opts.custom_flags(0x0020_0000); // FILE_FLAG_OPEN_REPARSE_POINT
+    }
+    let mut f = opts.open(p)?;
+    let meta = f.metadata()?;
+    if !meta.is_file() || meta.file_type().is_symlink() {
+        bail!("{} is a link or folder, not a plain file", name(p));
+    }
     let len = meta.len();
-    let mut f = std::fs::OpenOptions::new().write(true).open(p)?;
     if links(&f) > 1 {
         bail!("{} has other hard links; shredding it would destroy them too", name(p));
     }
@@ -420,6 +440,11 @@ fn virustotal(src: &Path) -> Result<()> {
 pub fn curl_secret(cmd: &mut std::process::Command, config: &str) -> Result<std::process::Output> {
     use std::io::Write;
     use std::process::Stdio;
+    // each line is `name = "value"`; a pasted key with a quote, backslash or line break could
+    // otherwise add its own curl options (e.g. write a file somewhere)
+    if config.lines().any(|l| l.matches('"').count() != 2 || l.contains('\\')) || config.contains('\r') {
+        bail!("the saved key contains characters a key never has; paste it again in Settings");
+    }
     let mut child = cmd.arg("-K").arg("-").stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
     child.stdin.take().context("no stdin")?.write_all(config.as_bytes())?;
     Ok(child.wait_with_output()?)
@@ -477,7 +502,19 @@ pub fn tool_file(id: &str, name: &str) -> Option<PathBuf> {
 }
 
 /// whisper.cpp model: multilingual "base" (≈150 MB) handles Vietnamese and English well enough.
-const WHISPER_MODEL: &str = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin";
+const WHISPER_MODEL: &str = "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-base.bin";
+
+/// SHA-256 of the files from pinned downloads (anything else is refused and deleted).
+/// Tools that follow GitHub's latest release are checked against the digest GitHub publishes.
+const PINNED: &[(&str, &str, &str)] = &[
+    ("ai", "onnxruntime.dll", "579b636403983254346a5c1d80bd28f1519cd1e284cd204f8d4ff41f8d711559"),
+    ("ai", "isnet-general-use.onnx", "60920e99c45464f2ba57bee2ad08c919a52bbf852739e96947fbb4358c0d964a"),
+    ("ai", "version-RFB-320.onnx", "34cd7e60aeff28744c657de7a3dc64e872d506741de66987f3426f2b79f88017"),
+    ("upscale", "realesrgan-ncnn-vulkan.exe", "07e49f7cbb4ede01ae4dd4c399d3a7e5846e3d2085c3128eff881e55cb7b1a0c"),
+    ("upscale", "realesrgan-x4plus.bin", "713ee713b0353afaa27976f0563a64a5043bd70b9bd8936c2e26e25ebcdbcddf"),
+    ("upscale", "realesrgan-x4plus.param", "35330ececcea33b6c397a72548e788d5d53becee4734c50b7fada36e89f10a86"),
+    ("whisper", "ggml-base.bin", "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe"),
+];
 
 pub fn whisper_model() -> Option<PathBuf> {
     tool_file("whisper", "ggml-base.bin")
@@ -493,6 +530,10 @@ pub fn tool_path(id: &str) -> Option<PathBuf> {
     let dir = tools_dir().join(id);
     if let Some(p) = find_file(&dir, exe, 3) {
         return Some(p);
+    }
+    // a DLL found on PATH (Windows ships an older onnxruntime.dll) would be loaded into the app itself
+    if id == "ai" {
+        return None;
     }
     std::env::var_os("PATH").and_then(|p| std::env::split_paths(&p).map(|d| d.join(exe)).find(|p| p.is_file()))
 }
@@ -513,7 +554,23 @@ fn find_file(dir: &Path, file: &str, depth: u32) -> Option<PathBuf> {
 
 /// Downloads the latest Windows release of a tool from GitHub into the tools folder.
 pub fn install_tool(id: &str) -> Result<PathBuf> {
+    // a second click while the first download runs would delete its files
+    static BUSY: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+    {
+        let mut busy = BUSY.lock().unwrap_or_else(|e| e.into_inner());
+        if busy.iter().any(|b| b == id) {
+            bail!("already downloading");
+        }
+        busy.push(id.to_string());
+    }
+    let r = install_tool_once(id);
+    BUSY.lock().unwrap_or_else(|e| e.into_inner()).retain(|b| b != id);
+    r
+}
+
+fn install_tool_once(id: &str) -> Result<PathBuf> {
     let (_, source, want, _) = *TOOLS.iter().find(|t| t.0 == id).context("unknown tool")?;
+    let mut digest = None;
     let url = if source.starts_with("https://") {
         source.to_string()
     } else {
@@ -526,23 +583,53 @@ pub fn install_tool(id: &str) -> Result<PathBuf> {
             .as_array()
             .and_then(|a| a.iter().find(|x| x["name"].as_str().is_some_and(|n| n.to_lowercase().contains(want) && n.ends_with(".zip"))))
             .context("no Windows download found")?;
+        digest = Some(
+            asset["digest"].as_str().and_then(|d| d.strip_prefix("sha256:")).context("GitHub didn't publish a checksum for this download, so it wasn't installed")?.to_lowercase(),
+        );
         asset["browser_download_url"].as_str().context("no download link")?.to_string()
     };
+    // build the new copy next to the old one; a failed or tampered download leaves the working one alone
     let dir = tools_dir().join(id);
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir)?;
-    let zip = dir.join("download.zip");
-    download(&url, &zip, 1000)?;
-    super::files::untar(&zip, &dir)?;
-    let _ = std::fs::remove_file(&zip);
-    for (url, name, min) in tool_extras(id) {
-        download(url, &dir.join(name), *min)?;
+    let new = tools_dir().join(format!("{id}.new"));
+    let _ = std::fs::remove_dir_all(&new);
+    std::fs::create_dir_all(&new)?;
+    let r = (|| -> Result<()> {
+        let zip = new.join("download.zip");
+        download(&url, &zip, 1000)?;
+        if let Some(want) = &digest {
+            if &super::files::sha256(&zip)? != want {
+                bail!("the download didn't match its published checksum, so it wasn't installed");
+            }
+        }
+        super::files::untar(&zip, &new)?;
+        let _ = std::fs::remove_file(&zip);
+        for (url, name, min) in tool_extras(id) {
+            download(url, &new.join(name), *min)?;
+        }
+        for (_, name, sum) in PINNED.iter().filter(|p| p.0 == id) {
+            let f = find_file(&new, name, 4).with_context(|| format!("the download is missing {name}"))?;
+            if super::files::sha256(&f)? != *sum {
+                bail!("{name} didn't match its known checksum, so it wasn't installed");
+            }
+        }
+        Ok(())
+    })();
+    if let Err(e) = r {
+        let _ = std::fs::remove_dir_all(&new);
+        return Err(e);
     }
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::rename(&new, &dir).context("the old version is still in use; close what is using it and try again")?;
     tool_path(id).context("the download didn't contain the program")
 }
 
 fn download(url: &str, to: &Path, min_size: u64) -> Result<()> {
-    let ok = super::tools::quiet(&curl()).args(["-sfL", "--retry", "2", "--max-time", "1800", "-o"]).arg(to).arg(url).status()?.success();
+    let ok = super::tools::quiet(&curl())
+        .args(["-sfL", "--proto", "=https", "--proto-redir", "=https", "--retry", "2", "--max-time", "1800", "-o"])
+        .arg(to)
+        .arg(url)
+        .status()?
+        .success();
     if !ok || std::fs::metadata(to).map(|m| m.len()).unwrap_or(0) < min_size {
         let _ = std::fs::remove_file(to);
         bail!("download failed: {}", url.rsplit('/').next().unwrap_or(url));
@@ -556,7 +643,7 @@ fn run_tool(src: &Path, tool: &str) -> Result<Vec<PathBuf>> {
     match tool {
         "upx" => {
             let out = out_path(src, Some("unpacked"), &ext(src));
-            let o = cmd.arg("-d").arg("-o").arg(&out).arg(src).output()?;
+            let o = super::tools::output_within(cmd.arg("-d").arg("-o").arg(&out).arg(src), std::time::Duration::from_secs(600))?;
             if !o.status.success() {
                 bail!("{}", String::from_utf8_lossy(&o.stdout).lines().find(|l| l.contains("Exception") || l.contains("error")).unwrap_or("not packed with UPX"));
             }
@@ -567,7 +654,7 @@ fn run_tool(src: &Path, tool: &str) -> Result<Vec<PathBuf>> {
             if rules.trim().is_empty() || !Path::new(rules.trim()).exists() {
                 bail!("choose a YARA rules folder in Settings › Add-ons");
             }
-            let o = cmd.args(["scan", "--recursive"]).arg(rules.trim()).arg(src).output()?;
+            let o = super::tools::output_within(cmd.args(["scan", "--recursive"]).arg(rules.trim()).arg(src), std::time::Duration::from_secs(600))?;
             let text = String::from_utf8_lossy(&o.stdout).into_owned();
             let hits = text.lines().filter(|l| !l.trim().is_empty()).count();
             if !o.status.success() && hits == 0 {
@@ -582,7 +669,7 @@ fn run_tool(src: &Path, tool: &str) -> Result<Vec<PathBuf>> {
             Ok(vec![out])
         }
         "capa" | "floss" => {
-            let o = cmd.arg(src).output()?;
+            let o = super::tools::output_within(cmd.arg(src), std::time::Duration::from_secs(1800))?;
             let text = String::from_utf8_lossy(&o.stdout);
             if text.trim().is_empty() {
                 bail!("{}", String::from_utf8_lossy(&o.stderr).lines().last().unwrap_or("no output"));

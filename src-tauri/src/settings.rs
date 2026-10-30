@@ -103,16 +103,18 @@ mod seal {
         Some(v)
     }
 
+    /// A value that is still sealed (could not be opened) is written back as it was.
     pub fn lock(s: &str) -> String {
-        if s.is_empty() {
-            return String::new();
+        if s.is_empty() || s.starts_with("dpapi:") {
+            return s.to_string();
         }
         run(s.as_bytes(), true).map(|v| format!("dpapi:{}", base64::engine::general_purpose::STANDARD.encode(v))).unwrap_or_default()
     }
 
-    pub fn unlock(s: &str) -> String {
-        let Some(b64) = s.strip_prefix("dpapi:") else { return s.to_string() };
-        base64::engine::general_purpose::STANDARD.decode(b64).ok().and_then(|v| run(&v, false)).and_then(|v| String::from_utf8(v).ok()).unwrap_or_default()
+    /// None when the value was sealed by another Windows account or PC.
+    pub fn unlock(s: &str) -> Option<String> {
+        let Some(b64) = s.strip_prefix("dpapi:") else { return Some(s.to_string()) };
+        base64::engine::general_purpose::STANDARD.decode(b64).ok().and_then(|v| run(&v, false)).and_then(|v| String::from_utf8(v).ok())
     }
 }
 
@@ -121,8 +123,32 @@ mod seal {
     pub fn lock(s: &str) -> String {
         s.to_string()
     }
-    pub fn unlock(s: &str) -> String {
-        s.to_string()
+    pub fn unlock(s: &str) -> Option<String> {
+        Some(s.to_string())
+    }
+}
+
+/// What the windows see instead of a saved key; sending it back leaves the key unchanged.
+const MASK: &str = "••••••••";
+
+/// A copy for the web views: keys are never handed to them, only whether one is set.
+fn masked(s: &Settings) -> Settings {
+    let mut s = s.clone();
+    for v in s.secrets() {
+        if !v.is_empty() {
+            *v = MASK.into();
+        }
+    }
+    s
+}
+
+/// The keys in memory. One that could not be opened stays sealed (so it isn't wiped on the next save)
+/// and is treated as missing.
+fn usable(v: &str) -> &str {
+    if v.starts_with("dpapi:") {
+        ""
+    } else {
+        v
     }
 }
 
@@ -138,67 +164,105 @@ pub fn first_run(app: &AppHandle) -> bool {
 }
 
 pub fn load(app: &AppHandle) -> Settings {
-    file(app)
-        .and_then(|p| fs::read_to_string(p).ok())
-        .and_then(|s| serde_json::from_str::<Settings>(&s).ok())
-        .map(|mut s| {
+    let Some(p) = file(app) else { return Settings::default() };
+    let Ok(text) = fs::read_to_string(&p) else { return Settings::default() };
+    match serde_json::from_str::<Settings>(&text) {
+        Ok(mut s) => {
             for v in s.secrets() {
-                *v = seal::unlock(v);
+                match seal::unlock(v) {
+                    Some(open) => *v = open,
+                    None => crate::log("settings: a saved key could not be opened on this account; it needs to be entered again"),
+                }
             }
             s
-        })
-        .unwrap_or_default()
+        }
+        Err(e) => {
+            // keep the broken file for the user instead of silently overwriting it with defaults
+            let _ = fs::copy(&p, p.with_extension("json.bad"));
+            crate::log(&format!("settings: unreadable ({e}); kept a copy as settings.json.bad and started from defaults"));
+            Settings::default()
+        }
+    }
 }
 
 static CURRENT: Mutex<Option<Settings>> = Mutex::new(None);
 
 /// Settings for code without an AppHandle (engines).
 pub fn current() -> Settings {
-    CURRENT.lock().unwrap().clone().unwrap_or_default()
+    let mut s = CURRENT.lock().unwrap_or_else(|e| e.into_inner()).clone().unwrap_or_default();
+    for v in s.secrets() {
+        *v = usable(v).to_string();
+    }
+    s
 }
 
 pub fn get(app: &AppHandle) -> Settings {
-    app.state::<Store>().0.lock().unwrap().clone()
+    app.state::<Store>().0.lock().unwrap_or_else(|e| e.into_inner()).clone()
 }
 
 pub fn update(app: &AppHandle, f: impl FnOnce(&mut Settings)) {
-    let snapshot = {
-        let store = app.state::<Store>();
-        let mut s = store.0.lock().unwrap();
-        f(&mut s);
-        *CURRENT.lock().unwrap() = Some(s.clone());
-        s.clone()
-    };
+    let _ = try_update(app, |s| {
+        f(s);
+        Ok(())
+    });
+}
+
+/// Changes the settings and saves them while holding the lock, so two changes can't be saved out of order.
+fn try_update(app: &AppHandle, f: impl FnOnce(&mut Settings) -> Result<(), String>) -> Result<Settings, String> {
+    let store = app.state::<Store>();
+    let mut s = store.0.lock().unwrap_or_else(|e| e.into_inner());
+    let mut next = s.clone();
+    f(&mut next)?;
+    *s = next;
+    *CURRENT.lock().unwrap_or_else(|e| e.into_inner()) = Some(s.clone());
+    #[cfg(windows)]
+    crate::win::set_peek(s.enabled && s.peek);
     if let Some(p) = file(app) {
         if let Some(dir) = p.parent() {
             let _ = fs::create_dir_all(dir);
         }
-        let mut sealed = snapshot.clone();
+        let mut sealed = s.clone();
         for v in sealed.secrets() {
             *v = seal::lock(v);
         }
-        let _ = fs::write(p, serde_json::to_string_pretty(&sealed).unwrap_or_default());
+        // write a new file and swap it in, so a crash mid-write can't leave half a file
+        let tmp = p.with_extension("json.tmp");
+        let saved = fs::write(&tmp, serde_json::to_string_pretty(&sealed).unwrap_or_default()).and_then(|_| fs::rename(&tmp, &p));
+        if let Err(e) = saved {
+            crate::log(&format!("settings: could not save: {e}"));
+        }
     }
-    let _ = app.emit("settings", &snapshot);
+    let out = masked(&s);
+    drop(s);
+    let _ = app.emit("settings", &out);
+    Ok(out)
 }
 
 #[tauri::command]
-pub fn get_settings(app: AppHandle) -> Settings {
-    get(&app)
+pub async fn get_settings(app: AppHandle) -> Settings {
+    masked(&get(&app))
 }
 
 /// Applies a partial update from the settings view, e.g. `{"theme": "dark"}`.
 #[tauri::command]
-pub fn update_settings(app: AppHandle, patch: serde_json::Value) -> Result<Settings, String> {
-    let mut v = serde_json::to_value(get(&app)).map_err(|e| e.to_string())?;
-    if let (Some(o), Some(p)) = (v.as_object_mut(), patch.as_object()) {
-        for (k, val) in p {
-            o.insert(k.clone(), val.clone());
+pub async fn update_settings(app: AppHandle, patch: serde_json::Value) -> Result<Settings, String> {
+    try_update(&app, |s| {
+        let keep: Vec<String> = s.secrets().iter().map(|v| v.to_string()).collect();
+        let mut v = serde_json::to_value(&*s).map_err(|e| e.to_string())?;
+        if let (Some(o), Some(p)) = (v.as_object_mut(), patch.as_object()) {
+            for (k, val) in p {
+                o.insert(k.clone(), val.clone());
+            }
         }
-    }
-    let new: Settings = serde_json::from_value(v).map_err(|e| e.to_string())?;
-    update(&app, |s| *s = new.clone());
-    Ok(new)
+        *s = serde_json::from_value(v).map_err(|e| e.to_string())?;
+        // the mask coming back means "unchanged"
+        for (v, old) in s.secrets().into_iter().zip(keep) {
+            if v.as_str() == MASK {
+                *v = old;
+            }
+        }
+        Ok(())
+    })
 }
 
 #[tauri::command]
@@ -220,7 +284,10 @@ mod tests {
     fn secrets_round_trip() {
         let locked = super::seal::lock("sk-test-123");
         assert!(locked.starts_with("dpapi:") && !locked.contains("sk-test"));
-        assert_eq!(super::seal::unlock(&locked), "sk-test-123");
-        assert_eq!(super::seal::unlock("plain"), "plain");
+        assert_eq!(super::seal::unlock(&locked).as_deref(), Some("sk-test-123"));
+        assert_eq!(super::seal::unlock("plain").as_deref(), Some("plain"));
+        // a key sealed elsewhere is kept as it was, not wiped
+        assert_eq!(super::seal::unlock("dpapi:AAAA"), None);
+        assert_eq!(super::seal::lock("dpapi:AAAA"), "dpapi:AAAA");
     }
 }

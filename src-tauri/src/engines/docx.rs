@@ -9,7 +9,7 @@ pub fn to_markdown(src: &Path) -> Result<PathBuf> {
     // a .docx is a zip; Windows' tar reads zips
     let dir = temp_file("docx");
     std::fs::create_dir_all(&dir)?;
-    let r = super::files::untar(src, &dir).and_then(|_| std::fs::read_to_string(dir.join("word").join("document.xml")).context("not a Word document"));
+    let r = super::files::untar_one(src, &dir, "word/document.xml").and_then(|_| std::fs::read_to_string(dir.join("word").join("document.xml")).context("not a Word document"));
     let _ = std::fs::remove_dir_all(&dir);
     let md = convert(&r?)?;
     let out = out_path(src, None, "md");
@@ -30,6 +30,8 @@ fn convert(xml: &str) -> Result<String> {
     let mut para: Option<Para> = None;
     let (mut bold, mut italic) = (false, false);
     let mut in_text = false;
+    // <w:tab/> inside a run is a tab character; inside paragraph properties it is a tab stop
+    let mut in_run = false;
     // tables: rows of cells, each cell's paragraphs joined
     let mut table: Vec<Vec<String>> = Vec::new();
     let mut depth = 0usize; // nested table depth
@@ -45,7 +47,10 @@ fn convert(xml: &str) -> Result<String> {
                 }
                 b"tr" if depth == 1 => table.push(Vec::new()),
                 b"tc" if depth == 1 => cell = Some(String::new()),
-                b"p" => para = Some(Para::default()),
+                b"p" => {
+                    para = Some(Para::default());
+                    in_run = false;
+                }
                 b"pStyle" => {
                     if let (Some(p), Some(v)) = (para.as_mut(), attr(&e, b"val")) {
                         p.style = v;
@@ -59,16 +64,20 @@ fn convert(xml: &str) -> Result<String> {
                 b"r" => {
                     bold = false;
                     italic = false;
+                    in_run = true;
                 }
                 b"b" => bold = attr(&e, b"val").is_none_or(|v| v != "0" && v != "false"),
                 b"i" => italic = attr(&e, b"val").is_none_or(|v| v != "0" && v != "false"),
                 b"t" => in_text = true,
-                b"tab" => push(&mut para, "\t"),
+                b"tab" if in_run => push(&mut para, "\t"),
                 b"br" => push(&mut para, "  \n"),
                 _ => {}
             },
             Event::Text(t) if in_text => {
+                // the document's own * _ ` \ are escaped, so they never read as formatting (and the
+                // clean-up of "****"/"__" below can't eat them)
                 let s = t.unescape().map(|s| s.into_owned()).unwrap_or_default();
+                let s: String = s.chars().flat_map(|c| if matches!(c, '\\' | '*' | '_' | '`') { vec!['\\', c] } else { vec![c] }).collect();
                 if s.trim().is_empty() {
                     push(&mut para, &s);
                 } else {
@@ -83,6 +92,7 @@ fn convert(xml: &str) -> Result<String> {
             }
             Event::End(e) => match e.local_name().as_ref() {
                 b"t" => in_text = false,
+                b"r" => in_run = false,
                 b"p" => {
                     let Some(p) = para.take() else { continue };
                     let line = render(&p);

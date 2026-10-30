@@ -356,9 +356,17 @@ function trim() {
 async function thumbs(width) {
   const note = h('p', { class: 'label' }, 'Loading pages…');
   stage.append(note);
-  const list = await invoke('pdf_thumbs', { path, width });
-  note.remove();
-  return list;
+  try {
+    return await invoke('pdf_thumbs', { path, width });
+  } catch (e) {
+    // a damaged or password-protected PDF: say so instead of loading forever
+    $('error').hidden = false;
+    $('error').textContent = String(e);
+    $('save').disabled = true;
+    return [];
+  } finally {
+    note.remove();
+  }
 }
 
 function pages() {
@@ -512,7 +520,11 @@ const tools = { crop, addbg: addBg, redact, trim, pages, sign };
 const getResult = (tools[toolName] || crop)();
 const win = getCurrentWindow();
 
+let saving = false;
 async function save() {
+  // one job per click, however fast Save or Enter is pressed
+  if (saving) return;
+  saving = true;
   try {
     const { action, title } = getResult();
     await invoke('run_action', { paths: [path], action, title });
@@ -520,6 +532,7 @@ async function save() {
   } catch (e) {
     $('error').hidden = false;
     $('error').textContent = e?.message || String(e);
+    saving = false;
   }
 }
 
@@ -527,5 +540,9 @@ $('save').addEventListener('click', save);
 $('cancel').addEventListener('click', () => win.close());
 addEventListener('keydown', (e) => {
   if (e.key === 'Escape') win.close();
-  if (e.key === 'Enter' && !(e.target instanceof HTMLButtonElement)) save();
+  if (e.key === 'Enter' && !(e.target instanceof HTMLButtonElement)) {
+    // commit what was just typed (its change event) before saving
+    if (e.target instanceof HTMLInputElement) e.target.blur();
+    setTimeout(save);
+  }
 });

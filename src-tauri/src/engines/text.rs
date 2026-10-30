@@ -50,8 +50,11 @@ pre code{background:none;padding:0}table{border-collapse:collapse;font-size:12px
 td,th{border:1px solid #ccc;padding:4px 8px;text-align:left}th{background:#f2f2f2}\
 img{max-width:100%}blockquote{margin-left:0;padding-left:16px;border-left:3px solid #ccc;color:#555}";
 
-fn page(title: &str, body: &str) -> String {
-    format!("<!doctype html><html><head><meta charset=\"utf-8\"><meta http-equiv=\"Content-Security-Policy\" content=\"script-src 'none'; connect-src 'none'\"><title>{}</title><style>{STYLE}</style></head><body>{body}</body></html>", escape(title))
+/// Text and Markdown from anywhere get no scripts, frames or embedded documents: a downloaded
+/// .md with `<iframe src="file:///…">` would otherwise copy a local file into the PDF.
+/// Pictures are allowed (relative ones resolve next to the source through `base`).
+fn page(title: &str, body: &str, base: &str) -> String {
+    format!("<!doctype html><html><head><meta charset=\"utf-8\"><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; img-src data: file:; style-src 'unsafe-inline'; font-src data:\"><base href=\"{}\"><title>{}</title><style>{STYLE}</style></head><body>{body}</body></html>", escape(base), escape(title))
 }
 
 pub fn to_html(src: &Path) -> Result<String> {
@@ -79,7 +82,8 @@ pub fn to_html(src: &Path) -> Result<String> {
         }
         _ => format!("<pre>{}</pre>", escape(&text)),
     };
-    Ok(page(&stem(src), &body))
+    let base = src.parent().map(|d| format!("{}/", url(d))).unwrap_or_default();
+    Ok(page(&stem(src), &body, &base))
 }
 
 fn edge() -> Option<PathBuf> {
@@ -120,10 +124,11 @@ fn to_pdf(src: &Path) -> Result<PathBuf> {
         use std::os::windows::process::CommandExt;
         cmd.creation_flags(super::tools::CREATE_NO_WINDOW);
     }
-    let status = cmd.output()?.status;
+    let r = super::tools::output_within(&mut cmd, std::time::Duration::from_secs(120));
     if html != src {
         let _ = std::fs::remove_file(&html);
     }
+    let status = r.context("Edge couldn't print the PDF")?.status;
     if !status.success() || !out.is_file() {
         bail!("Edge couldn't print the PDF");
     }

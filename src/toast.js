@@ -4,6 +4,7 @@ import { startDrag } from '@crabnebula/tauri-plugin-drag';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { check } from '@tauri-apps/plugin-updater';
 import { fixFor, runFix } from './fixes.js';
+import { t } from './i18n.js';
 import { initTheme } from './theme.js';
 
 initTheme();
@@ -20,7 +21,7 @@ function render(u) {
   shown = u.id;
   $('state').textContent = TAGS[u.state];
   $('state').className = `tag ${u.state}`;
-  $('title').textContent = u.error && u.state !== 'running' ? u.title : u.state === 'done' ? u.title.replace(/^(\w+)ing\b/, (_, w) => doneWord(w)) : `${u.title}…`;
+  $('title').textContent = u.error && u.state !== 'running' ? u.title : u.state === 'done' ? doneTitle(u.title) : `${u.title}…`;
   $('fill').style.transform = `scaleX(${u.percent.toFixed(3)})`;
   $('count').textContent = `${u.done} of ${u.total} saved`;
   const waiting = [...jobs.values()].filter((j) => j.state === 'running' && j.id !== u.id).length;
@@ -101,6 +102,12 @@ const DONE = {
   Runn: 'Ran', Open: 'Opened', Blurr: 'Blurred', Upscal: 'Upscaled', Translat: 'Translated', Summariz: 'Summarized', Sign: 'Signed', Sav: 'Saved', Protect: 'Protected', Unlock: 'Unlocked', Number: 'Numbered', Gett: 'Got',
 };
 const doneWord = (w) => DONE[w] || `${w}ed`;
+// in Vietnamese "Đang nén" (working) becomes "Đã nén" (done)
+function doneTitle(title) {
+  const vi = t(title);
+  if (vi !== title && vi.startsWith('Đang ')) return `Đã ${vi.slice(5)}`;
+  return title.replace(/^(\w+)ing\b/, (_, w) => doneWord(w));
+}
 
 function scheduleHide(ms) {
   clearTimeout(hideTimer);

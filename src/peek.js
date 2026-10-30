@@ -12,12 +12,17 @@ let path = new URLSearchParams(location.search).get('path') || '';
 
 const size = (n) => (n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : n < 1073741824 ? `${(n / 1048576).toFixed(1)} MB` : `${(n / 1073741824).toFixed(2)} GB`);
 
+// arrowing through files quickly: only the newest preview may draw
+let shown = 0;
+
 async function show(p) {
+  const my = ++shown;
   path = p;
   const view = $('view');
   view.replaceChildren();
   $('name').textContent = p.split(/[\\/]/).pop();
   const info = await invoke('file_info', { path: p }).catch(() => null);
+  if (my !== shown) return;
   $('meta').textContent = info ? (info.is_dir ? `${info.items} items` : size(info.size)) : '';
   const src = convertFileSrc(p);
   const k = info?.is_dir ? 'folder' : kindOf(p);
@@ -31,9 +36,12 @@ async function show(p) {
   } else if (k === 'pdf') {
     const box = el('div', { className: 'pages', textContent: 'Loading pages…' });
     view.append(box);
-    invoke('pdf_thumbs', { path: p, width: 900 }).then((pages) => box.replaceChildren(...pages.map((s) => el('img', { src: s, alt: '' }))));
+    invoke('pdf_thumbs', { path: p, width: 900 })
+      .then((pages) => my === shown && box.replaceChildren(...pages.map((s) => el('img', { src: s, alt: '' }))))
+      .catch((e) => my === shown && (box.textContent = `Can't show this PDF: ${e}`));
   } else if (k === 'text' || (info && info.size < 2_000_000 && !info.real_type && !info.is_dir)) {
     const text = await invoke('read_text', { path: p, max: 262144 }).catch(() => '');
+    if (my !== shown) return;
     view.append(el('pre', { textContent: text + (info?.size > 262144 ? '\n…' : '') }));
   } else {
     const dl = el('dl', { className: 'info' });

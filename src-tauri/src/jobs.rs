@@ -57,7 +57,7 @@ fn history_file(app: &AppHandle) -> Option<PathBuf> {
 }
 
 fn with_history<T>(app: &AppHandle, f: impl FnOnce(&mut Vec<Record>) -> T) -> T {
-    let mut h = HISTORY.lock().unwrap();
+    let mut h = HISTORY.lock().unwrap_or_else(|e| e.into_inner());
     let list = h.get_or_insert_with(|| {
         history_file(app).and_then(|p| std::fs::read_to_string(p).ok()).and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default()
     });
@@ -126,10 +126,35 @@ pub fn start(app: AppHandle) -> Queue {
     let (tx, rx) = channel::<Job>();
     std::thread::spawn(move || {
         for job in rx {
-            run(&app, job);
+            // a crash inside one engine must not take the whole queue down
+            let (id, title, paths) = (job.id, job.title.clone(), job.paths.clone());
+            if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run(&app, job))).is_err() {
+                crate::naming::discard();
+                crashed(&app, id, &title, &paths);
+            }
         }
     });
     Queue(Mutex::new(tx))
+}
+
+fn crashed(app: &AppHandle, id: u64, title: &str, paths: &[PathBuf]) {
+    let error = "ShiftDrop hit an internal error on this file. Nothing was changed.".to_string();
+    crate::log(&format!("job {id} panicked"));
+    remember(
+        app,
+        Record {
+            id,
+            time: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0),
+            title: title.into(),
+            files: paths.iter().map(|p| p.display().to_string()).collect(),
+            state: "error".into(),
+            outputs: vec![],
+            error: Some(error.clone()),
+            note: None,
+            action: None,
+        },
+    );
+    let _ = app.emit("job", Update { id, title, state: "error", done: 0, total: paths.len().max(1), percent: 1.0, outputs: &[], error: Some(error), note: None });
 }
 
 fn run(app: &AppHandle, job: Job) {
@@ -146,9 +171,14 @@ fn run(app: &AppHandle, job: Job) {
     engines::take_notes();
     for (i, unit) in units.iter().enumerate() {
         let progress = |p: f32| emit("running", i, (i as f32 + p) / total as f32, &[], None, None);
+        crate::naming::begin();
         match engines::run(unit, &job.action, &progress) {
-            Ok(out) => outputs.extend(out),
+            Ok(out) => {
+                crate::naming::finish();
+                outputs.extend(out)
+            }
             Err(e) => {
+                crate::naming::discard();
                 let name = unit[0].file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
                 errors.push(if total > 1 { format!("{name}: {e}") } else { e.to_string() });
             }
@@ -180,7 +210,7 @@ fn run(app: &AppHandle, job: Job) {
 }
 
 #[tauri::command]
-pub fn run_action(app: AppHandle, paths: Vec<String>, action: Action, title: String) -> Result<u64, String> {
+pub async fn run_action(app: AppHandle, paths: Vec<String>, action: Action, title: String) -> Result<u64, String> {
     crate::log(&format!("run_action {} on {paths:?}", redacted(&action)));
     queue(&app, paths.into_iter().map(PathBuf::from).collect(), action, title)
 }
@@ -199,7 +229,7 @@ pub fn queue(app: &AppHandle, paths: Vec<PathBuf>, action: Action, title: String
     }
     let id = ID.fetch_add(1, Ordering::Relaxed);
     crate::windows::show_toast(app);
-    app.state::<Queue>().0.lock().unwrap().send(Job { id, title, paths, action }).map_err(|e| e.to_string())?;
+    app.state::<Queue>().0.lock().unwrap_or_else(|e| e.into_inner()).send(Job { id, title, paths, action }).map_err(|e| e.to_string())?;
     Ok(id)
 }
 

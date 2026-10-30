@@ -185,16 +185,19 @@ function target() {
 
 async function drop() {
   const t = target();
+  const files = paths;
   // an action picked from around More counts for that action, so it can earn a wedge
   if (t && hot?.ring > 0) noteUse(menu.kind, t.from || menu.items[hot.i].id);
+  // close first: opening a window can take a moment, and a new Shift-drag in that time
+  // must not have its fresh wheel closed by this one
+  close();
   try {
-    if (t?.more) await invoke('open_hub', { paths, view: 'more', item: null });
-    else if (t?.ask) await invoke('open_hub', { paths, view: 'ask', item: t });
-    else await runTarget(t, paths);
+    if (t?.more) await invoke('open_hub', { paths: files, view: 'more', item: null });
+    else if (t?.ask) await invoke('open_hub', { paths: files, view: 'ask', item: t });
+    else await runTarget(t, files);
   } catch (e) {
     invoke('ui_log', { msg: `drop failed: ${e}` });
   }
-  close();
 }
 
 function close() {
@@ -205,7 +208,14 @@ function close() {
 }
 
 // Explorer keeps the drag to itself, so the app reads the dragged files and follows the cursor.
+// apps installed (or add-ons downloaded) since start show up on the wheel without a restart
+let contextAt = Date.now();
+
 listen('overlay:show', ({ payload }) => {
+  if (Date.now() - contextAt > 60000) {
+    contextAt = Date.now();
+    setTimeout(() => loadContext(invoke), 1500);
+  }
   svg.classList.remove('open');
   glass.classList.remove('open');
   paths = payload.paths || [];

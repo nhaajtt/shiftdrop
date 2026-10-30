@@ -27,7 +27,16 @@ export function addView(v) {
 export function toggle(label, hint, checked, onchange) {
   const sw = h('input', { type: 'checkbox', class: 'switch' });
   sw.checked = checked;
-  sw.onchange = () => onchange(sw.checked);
+  sw.onchange = async () => {
+    const v = sw.checked;
+    try {
+      await onchange(v);
+    } catch (e) {
+      // the change didn't stick: show the switch as it really is
+      sw.checked = !v;
+      invoke('ui_log', { msg: `setting failed: ${e}` });
+    }
+  };
   return h('label', { class: 'field' }, h('div', { class: 'what' }, label, hint && h('small', {}, hint)), sw);
 }
 

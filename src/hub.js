@@ -38,11 +38,16 @@ shared.show = (id) => show(id);
 shared.nav = () => nav();
 shared.view = () => state.view;
 
+let showing = 0;
+
 export function show(id) {
   state.view = id;
   nav();
   $main.replaceChildren();
-  views.find((v) => v.id === id)?.render($main);
+  // views render after awaiting things; once another view is open, a late one must not add to it
+  const my = ++showing;
+  const root = { append: (...nodes) => my === showing && $main.append(...nodes) };
+  Promise.resolve(views.find((v) => v.id === id)?.render(root)).catch((e) => my === showing && alertLine(String(e)));
 }
 
 // --- Actions: every action for the files, searchable ("More…" on the wheel) ---------------
@@ -91,7 +96,8 @@ addView({
         alertLine(String(e));
         return;
       }
-      if (!it.editor) getCurrentWindow().hide();
+      // editors and the phone/upload views open in their own place: keep this window for them
+      if (!it.editor && !it.share) getCurrentWindow().hide();
     };
     const paint = () => {
       shown = list.filter((it) => match(it, q.value.trim()));
@@ -287,7 +293,14 @@ addView({
     const lang = h('select', { onchange: (e) => settings.set({ lang: e.target.value }).then(() => location.reload()) }, [['system', 'system'], ['en', 'English'], ['vi', 'Tiếng Việt']].map(([v, l]) => h('option', { value: v, selected: (s.lang || 'system') === v, translate: 'no' }, l)));
     general.append(h('div', { class: 'field' }, h('div', { class: 'what' }, 'Language'), lang));
     root.append(general);
-    for (const extra of settingsSections) root.append(await extra(s));
+    // one section failing (a check that errors) must not hide the ones after it
+    for (const extra of settingsSections) {
+      try {
+        root.append(await extra(s));
+      } catch (e) {
+        invoke('ui_log', { msg: `settings section failed: ${e}` });
+      }
+    }
   },
 });
 

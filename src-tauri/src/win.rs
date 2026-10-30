@@ -3,7 +3,11 @@
 use std::{
     cell::Cell,
     ffi::c_void,
-    sync::{mpsc::Sender, OnceLock},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        mpsc::Sender,
+        OnceLock,
+    },
 };
 use windows_sys::Win32::{
     Foundation::{CloseHandle, HWND, LPARAM, LRESULT, POINT, WPARAM},
@@ -35,6 +39,18 @@ pub enum HookEvent {
 
 static TX: OnceLock<Sender<HookEvent>> = OnceLock::new();
 const THRESHOLD: i32 = 10;
+/// Ctrl+Space is only taken from Explorer while Quick look is on.
+static PEEK: AtomicBool = AtomicBool::new(false);
+/// Digits are only taken from other apps while the wheel is actually on screen.
+static MENU_OPEN: AtomicBool = AtomicBool::new(false);
+
+pub fn set_peek(on: bool) {
+    PEEK.store(on, Ordering::Relaxed);
+}
+
+pub fn set_menu_open(open: bool) {
+    MENU_OPEN.store(open, Ordering::Relaxed);
+}
 
 thread_local! {
     static DOWN: Cell<Option<(i32, i32)>> = const { Cell::new(None) };
@@ -104,7 +120,7 @@ unsafe fn explorer_focused() -> Option<HWND> {
 }
 
 unsafe extern "system" fn key_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
-    if code >= 0 && wparam as u32 == WM_KEYDOWN && (*(lparam as *const KBDLLHOOKSTRUCT)).vkCode == 0x20 && !FIRED.get() {
+    if code >= 0 && wparam as u32 == WM_KEYDOWN && (*(lparam as *const KBDLLHOOKSTRUCT)).vkCode == 0x20 && !FIRED.get() && PEEK.load(Ordering::Relaxed) {
         // Ctrl+Space (without Shift/Alt) in Explorer opens the preview
         let down = |vk: u16| GetAsyncKeyState(vk as i32) as u16 & 0x8000 != 0;
         if down(0x11) && !down(VK_SHIFT) && !down(0x12) {
@@ -124,7 +140,7 @@ unsafe extern "system" fn key_proc(code: i32, wparam: WPARAM, lparam: LPARAM) ->
         };
         if let (Some(n), Some(tx)) = (n, TX.get()) {
             let _ = tx.send(HookEvent::Key { n });
-            if n != 0 {
+            if n != 0 && MENU_OPEN.load(Ordering::Relaxed) {
                 // keep the digit from reaching Explorer; Escape still cancels its drag
                 return 1;
             }

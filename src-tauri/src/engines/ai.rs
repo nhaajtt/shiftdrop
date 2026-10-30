@@ -27,24 +27,25 @@ pub fn run(paths: &[PathBuf], action: &Action, progress: Progress) -> Result<Vec
 
 const MISSING: &str = "the AI add-on isn't installed yet: Settings › Add-ons";
 
-/// Loads onnxruntime.dll from the add-on folder once.
+/// Loads onnxruntime.dll from the add-on folder once. Only success is remembered, so installing the
+/// add-on after a first failed try works without restarting.
 fn runtime() -> Result<()> {
-    static READY: OnceLock<std::result::Result<(), String>> = OnceLock::new();
-    READY
-        .get_or_init(|| {
-            let dll = security::tool_path("ai").ok_or(MISSING.to_string())?;
-            ort::init_from(dll.to_string_lossy().to_string()).commit().map(|_| ()).map_err(|e| e.to_string())
-        })
-        .clone()
-        .map_err(|e| anyhow::anyhow!(e))
+    static READY: Mutex<bool> = Mutex::new(false);
+    let mut ready = READY.lock().unwrap_or_else(|e| e.into_inner());
+    if !*ready {
+        let dll = security::tool_path("ai").context(MISSING)?;
+        ort::init_from(dll.to_string_lossy().to_string()).commit().map_err(|e| anyhow::anyhow!("the AI add-on couldn't start: {e}"))?;
+        *ready = true;
+    }
+    Ok(())
 }
 
 fn session(cache: &'static OnceLock<Mutex<Session>>, model: &str) -> Result<&'static Mutex<Session>> {
     if let Some(s) = cache.get() {
         return Ok(s);
     }
-    runtime()?;
     let path = security::tool_file("ai", model).context(MISSING)?;
+    runtime()?;
     let s = Session::builder()?.commit_from_file(path)?;
     Ok(cache.get_or_init(|| Mutex::new(s)))
 }
@@ -182,17 +183,25 @@ fn pixelate(img: &mut RgbaImage, x: u32, y: u32, w: u32, h: u32) {
 
 fn upscale(src: &Path, scale: u32) -> Result<PathBuf> {
     let exe = security::tool_path("upscale").context("Upscaling isn't installed yet: Settings › Add-ons")?;
+    let scale = scale.clamp(2, 4);
+    let img = open(src)?;
+    // past ~100 megapixels the result can't be opened again (and takes many minutes of GPU time)
+    if img.width() as u64 * img.height() as u64 * (scale * scale) as u64 > 100_000_000 {
+        bail!("this picture is already too big to enlarge {scale}× (the result would pass 100 megapixels)");
+    }
     let png = temp_file("png");
-    open(src)?.save(&png)?;
+    img.save(&png)?;
     let tmp_out = temp_file("png");
-    let o = super::tools::quiet(&exe)
-        .current_dir(exe.parent().context("no folder")?)
-        .arg("-i")
-        .arg(&png)
-        .arg("-o")
-        .arg(&tmp_out)
-        .args(["-n", "realesrgan-x4plus", "-s", &scale.to_string()])
-        .output()?;
+    let o = super::tools::output_within(
+        super::tools::quiet(&exe)
+            .current_dir(exe.parent().context("no folder")?)
+            .arg("-i")
+            .arg(&png)
+            .arg("-o")
+            .arg(&tmp_out)
+            .args(["-n", "realesrgan-x4plus", "-s", &scale.to_string()]),
+        std::time::Duration::from_secs(1200),
+    )?;
     let _ = std::fs::remove_file(&png);
     if !o.status.success() || !tmp_out.is_file() {
         bail!("upscaling failed (needs a graphics card with Vulkan): {}", String::from_utf8_lossy(&o.stderr).lines().last().unwrap_or(""));

@@ -88,8 +88,9 @@ pub fn save(img: &DynamicImage, out: &Path, fmt: &str, quality: u8) -> Result<()
             buf.into_inner()
         }
         "avif" => {
+            // the AVIF encoder here has no transparency: flatten on white like JPG does
             let tmp = crate::naming::temp_file("png");
-            fs::write(&tmp, png_bytes(img)?)?;
+            fs::write(&tmp, png_bytes(&DynamicImage::ImageRgb8(flatten(img)))?)?;
             let crf = 63 - (quality as u32 * 63 / 100).min(63);
             let r = media::png_to_avif(&tmp, out, crf.clamp(18, 50));
             let _ = fs::remove_file(tmp);
@@ -115,8 +116,29 @@ pub fn keep_fmt(src: &Path) -> String {
     }
 }
 
+/// GIF, WebP or PNG with more than one frame.
+fn animated(src: &Path) -> bool {
+    let r = || -> Result<bool> {
+        let file = std::io::BufReader::new(fs::File::open(src)?);
+        Ok(match ext(src).as_str() {
+            "gif" => {
+                use image::AnimationDecoder;
+                image::codecs::gif::GifDecoder::new(file)?.into_frames().take(2).count() > 1
+            }
+            "webp" => image::codecs::webp::WebPDecoder::new(file)?.has_animation(),
+            "png" | "apng" => image::codecs::png::PngDecoder::new(file)?.is_apng()?,
+            _ => false,
+        })
+    };
+    r().unwrap_or(false)
+}
+
 pub fn run(src: &Path, action: &Action, progress: Progress) -> Result<Vec<PathBuf>> {
     progress(0.1);
+    // re-encoding would silently keep only the first frame
+    if !matches!(action, Action::Convert { .. }) && animated(src) {
+        bail!("this is an animated picture; this action would keep only its first frame");
+    }
     let fmt = keep_fmt(src);
     let out = match action {
         Action::Convert { to } => {
@@ -244,7 +266,13 @@ fn strip(src: &Path) -> Result<PathBuf> {
             opts.strip = oxipng::StripChunks::Safe;
             fs::write(&out, oxipng::optimize_from_memory(&data, &opts)?)?;
         }
-        _ => save(&open(src)?, &out, &keep_fmt(src), 95)?,
+        _ => {
+            // HEIC, AVIF, RAW… are written as PNG, so the name has to say .png
+            let keep = keep_fmt(src);
+            let out = out_path(src, Some("Clean"), &keep);
+            save(&open(src)?, &out, &keep, 95)?;
+            return Ok(out);
+        }
     }
     Ok(out)
 }

@@ -23,11 +23,13 @@ settingsSections.push(async (s) => {
     const btn = h('button', { class: 'btn' }, t.installed ? 'Installed' : 'Download');
     btn.disabled = t.installed;
     btn.onclick = async () => {
+      btn.disabled = true;
       btn.textContent = 'Downloading…';
       try {
         await invoke('tools_install', { id: t.id });
         btn.textContent = 'Installed';
       } catch (e) {
+        btn.disabled = false;
         btn.textContent = 'Retry';
         btn.title = String(e);
       }
@@ -137,7 +139,8 @@ addView({
           const n = await invoke('rename_files', { pairs: plan });
           shared.files = plan.map(([, b]) => b);
           apply.textContent = `Renamed ${n}`;
-          setTimeout(() => shared.show('rename'), 1200);
+          // refresh the list, unless the user has moved on to another view meanwhile
+          setTimeout(() => shared.view?.() === 'rename' && shared.show('rename'), 1200);
         } catch (e) {
           err.hidden = false;
           err.textContent = String(e);

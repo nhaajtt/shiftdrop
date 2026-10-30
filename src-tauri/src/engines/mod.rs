@@ -228,7 +228,7 @@ fn custom(src: &std::path::Path, command: &str) -> Result<Vec<PathBuf>> {
     #[cfg(windows)]
     let o = {
         use std::os::windows::process::CommandExt;
-        tools::quiet(std::path::Path::new("cmd")).arg("/D").arg("/C").raw_arg(&line).current_dir(&dir).output()?
+        tools::output_within(tools::quiet(std::path::Path::new("cmd")).arg("/D").arg("/C").raw_arg(&line).current_dir(&dir), std::time::Duration::from_secs(3600))?
     };
     #[cfg(not(windows))]
     let o = std::process::Command::new("sh").arg("-c").arg(&line).current_dir(&dir).output()?;

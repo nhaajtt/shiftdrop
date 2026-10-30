@@ -44,8 +44,10 @@ pub fn log(msg: &str) {
 /// Opens a help link from a failure's fix. Only these sites, so a message can never open anything else.
 #[tauri::command]
 async fn open_link(url: String) -> Result<(), String> {
-    const ALLOWED: [&str; 3] = ["https://www.libreoffice.org/", "https://www.microsoft.com/", "https://github.com/nhaajtt/shiftdrop"];
-    if !ALLOWED.iter().any(|a| url.starts_with(a)) {
+    const ALLOWED: [&str; 3] = ["https://www.libreoffice.org/", "https://www.microsoft.com/", "https://github.com/nhaajtt/shiftdrop/"];
+    // the repo itself (no slash) is allowed too, but not look-alikes such as …/shiftdrop-evil
+    let ok = url == "https://github.com/nhaajtt/shiftdrop" || ALLOWED.iter().any(|a| url.starts_with(a));
+    if !ok || url.chars().any(|c| c.is_whitespace() || c.is_control() || c == '"') {
         return Err("link not allowed".into());
     }
     engines::security::open_url(&url).map_err(|e| e.to_string())
@@ -64,7 +66,7 @@ async fn open_logs() -> Result<(), String> {
 #[tauri::command]
 async fn report_bug(app: tauri::AppHandle, context: Option<String>) -> Result<(), String> {
     let version = app.package_info().version.to_string();
-    let build = std::process::Command::new("cmd").args(["/C", "ver"]).output().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default();
+    let build = engines::tools::quiet(std::path::Path::new("cmd")).args(["/C", "ver"]).output().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default();
     let message = context.map(|c| format!("**Message**\n```\n{c}\n```\n\n")).unwrap_or_default();
     let body = format!(
         "**What happened**\n\n\n**What you expected**\n\n\n**Steps**\n1. \n\n{message}**Version** ShiftDrop {version}, {build}\n\n_Settings › Report a problem › Open log folder has a log you can attach (it contains file names)._"
@@ -76,6 +78,8 @@ async fn report_bug(app: tauri::AppHandle, context: Option<String>) -> Result<()
 
 #[tauri::command]
 fn ui_log(msg: String) {
+    // one line, bounded: a page can't flood the log or fake other entries
+    let msg: String = msg.chars().take(500).map(|c| if c.is_control() { ' ' } else { c }).collect();
     log(&format!("ui: {msg}"));
 }
 

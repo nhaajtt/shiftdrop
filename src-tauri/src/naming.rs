@@ -25,7 +25,47 @@ pub fn unique(dir: &Path, base: &str, ext: &str) -> PathBuf {
         p = dir.join(format!("{base} ({n}).{ext}"));
         n += 1;
     }
+    claim(&p);
     p
+}
+
+thread_local! {
+    /// Every path handed out while one unit of work runs; all of them were free when handed out.
+    static CLAIMED: std::cell::RefCell<Vec<PathBuf>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+pub fn claim(p: &Path) {
+    CLAIMED.with(|c| {
+        let mut c = c.borrow_mut();
+        // threads outside the job queue never call begin(); don't let their list grow forever
+        if c.len() > 4096 {
+            c.clear();
+        }
+        c.push(p.to_path_buf())
+    });
+}
+
+/// Starts a unit of work: forget earlier claims.
+pub fn begin() {
+    CLAIMED.with(|c| c.borrow_mut().clear());
+}
+
+/// The unit failed: remove the half-written outputs and temp files it made, so no broken
+/// "Report Compressed.pdf" is left next to the original.
+pub fn discard() {
+    for p in CLAIMED.with(|c| std::mem::take(&mut *c.borrow_mut())) {
+        let _ = if p.is_dir() { std::fs::remove_dir_all(&p) } else { std::fs::remove_file(&p) };
+    }
+}
+
+/// The unit worked: only the temp files go.
+pub fn finish() {
+    let tmp = std::env::temp_dir().join("shiftdrop");
+    for p in CLAIMED.with(|c| std::mem::take(&mut *c.borrow_mut())) {
+        if p.starts_with(&tmp) && p.is_file() {
+            let _ = std::fs::remove_file(&p);
+        }
+    }
 }
 
 /// A new folder next to `src` for multi-file output, e.g. "Report pages".
@@ -39,6 +79,7 @@ pub fn out_dir(src: &Path, suffix: &str) -> std::io::Result<PathBuf> {
         n += 1;
     }
     std::fs::create_dir_all(&p)?;
+    claim(&p);
     Ok(p)
 }
 
@@ -47,7 +88,9 @@ pub fn temp_file(ext: &str) -> PathBuf {
     static N: AtomicU64 = AtomicU64::new(0);
     let dir = std::env::temp_dir().join("shiftdrop");
     let _ = std::fs::create_dir_all(&dir);
-    dir.join(format!("{}-{}.{ext}", std::process::id(), N.fetch_add(1, Ordering::Relaxed)))
+    let p = dir.join(format!("{}-{}.{ext}", std::process::id(), N.fetch_add(1, Ordering::Relaxed)));
+    claim(&p);
+    p
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]

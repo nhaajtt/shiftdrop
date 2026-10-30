@@ -267,16 +267,23 @@ fn contact_sheet(paths: &[PathBuf], progress: Progress) -> Result<PathBuf> {
     let n = paths.len();
     let cols = (n as f64).sqrt().ceil() as u32;
     let rows = (n as u32).div_ceil(cols);
-    let (cell, gap) = (400u32, 12u32);
+    // the sheet stays under ~8000 px a side however many pictures there are
+    let cell = (8000 / cols).clamp(64, 400) - 12;
+    let gap = 12u32;
     let mut sheet = RgbaImage::from_pixel(cols * (cell + gap) + gap, rows * (cell + gap) + gap, Rgba([255, 255, 255, 255]));
+    let mut drawn = 0;
     for (i, p) in paths.iter().enumerate() {
         progress(i as f32 / n as f32);
         let Ok(img) = open(p) else { continue };
+        drawn += 1;
         let t = img.thumbnail(cell, cell).to_rgba8();
         let (c, r) = (i as u32 % cols, i as u32 / cols);
         let x = gap + c * (cell + gap) + (cell - t.width()) / 2;
         let y = gap + r * (cell + gap) + (cell - t.height()) / 2;
         imageops::overlay(&mut sheet, &t, x as i64, y as i64);
+    }
+    if drawn == 0 {
+        bail!("none of these pictures could be opened");
     }
     let out = out_path(&paths[0], Some("Contact sheet"), "jpg");
     save(&DynamicImage::ImageRgba8(sheet), &out, "jpg", 90)?;

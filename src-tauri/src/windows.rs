@@ -1,7 +1,7 @@
 use std::{
     path::PathBuf,
     sync::{
-        atomic::{AtomicU32, Ordering},
+        atomic::{AtomicBool, AtomicU32, Ordering},
         Mutex,
     },
 };
@@ -100,6 +100,8 @@ pub fn show_overlay(app: &AppHandle, x: i32, y: i32, paths: &[PathBuf]) {
     let warnings = paths.iter().take(50).filter_map(|p| crate::engines::security::disguise(p)).collect();
     let _ = w.emit("overlay:show", Show { paths, backdrop: backdrop(left, top, s), warnings });
     place(&w, left, top, s, s);
+    #[cfg(windows)]
+    crate::win::set_menu_open(true);
 }
 
 /// Cursor moved (`drop` = button released) during a drag that has the menu open.
@@ -110,6 +112,8 @@ pub fn overlay_pointer(app: &AppHandle, x: i32, y: i32, drop: bool) {
 }
 
 pub fn hide_overlay(app: &AppHandle) {
+    #[cfg(windows)]
+    crate::win::set_menu_open(false);
     if let Some(w) = app.get_webview_window("overlay") {
         let _ = w.emit("overlay:hide", ());
         let _ = w.hide();
@@ -117,17 +121,24 @@ pub fn hide_overlay(app: &AppHandle) {
 }
 
 #[tauri::command]
-pub fn overlay_hide(app: AppHandle) {
+pub async fn overlay_hide(app: AppHandle) {
     hide_overlay(&app);
 }
 
-/// Bottom-right corner of the monitor under the cursor's last known position (primary as fallback).
 /// Height of the toast in logical pixels: compact for progress, taller when it explains a failure.
 static TOAST_H: AtomicU32 = AtomicU32::new(TOAST.1 as u32);
 
+/// Bottom-right corner of the monitor where the wheel was last opened (primary as fallback).
 pub fn show_toast(app: &AppHandle) {
     let Some(w) = app.get_webview_window("toast") else { return };
-    let Ok(Some(m)) = w.primary_monitor() else { return };
+    let (ox, oy) = *ORIGIN.lock().unwrap_or_else(|e| e.into_inner());
+    let at = w.available_monitors().ok().and_then(|ms| {
+        ms.into_iter().find(|m| {
+            let (p, s) = (m.position(), m.size());
+            ox >= p.x && oy >= p.y && ox < p.x + s.width as i32 && oy < p.y + s.height as i32
+        })
+    });
+    let Some(m) = at.or_else(|| w.primary_monitor().ok().flatten()) else { return };
     let scale = m.scale_factor();
     let area = m.work_area();
     let (tw, th) = ((TOAST.0 * scale) as i32, (TOAST_H.load(Ordering::Relaxed) as f64 * scale) as i32);
@@ -139,7 +150,7 @@ pub fn show_toast(app: &AppHandle) {
 
 /// The toast grows to fit an error with its explanation, and shrinks back for progress.
 #[tauri::command]
-pub fn toast_height(app: AppHandle, height: u32) {
+pub async fn toast_height(app: AppHandle, height: u32) {
     TOAST_H.store(height.clamp(TOAST.1 as u32, 320), Ordering::Relaxed);
     if app.get_webview_window("toast").is_some_and(|w| w.is_visible().unwrap_or(false)) {
         show_toast(&app);
@@ -147,12 +158,12 @@ pub fn toast_height(app: AppHandle, height: u32) {
 }
 
 #[tauri::command]
-pub fn toast_show(app: AppHandle) {
+pub async fn toast_show(app: AppHandle) {
     show_toast(&app);
 }
 
 #[tauri::command]
-pub fn toast_hide(app: AppHandle) {
+pub async fn toast_hide(app: AppHandle) {
     if let Some(w) = app.get_webview_window("toast") {
         let _ = w.hide();
     }
@@ -247,12 +258,16 @@ pub async fn shelf_add(app: AppHandle, paths: Vec<String>) -> Result<(), String>
 }
 
 pub fn shelf_add_now(app: AppHandle, paths: Vec<String>) -> Result<(), String> {
-    SHELF.lock().unwrap().extend(paths.iter().cloned());
+    SHELF.lock().unwrap_or_else(|e| e.into_inner()).extend(paths.iter().cloned());
     if let Some(w) = app.get_webview_window("shelf") {
-        let _ = w.emit("shelf:add", std::mem::take(&mut *SHELF.lock().unwrap()));
+        // a shelf still loading picks the files up itself with shelf_take; an event could be missed
+        if SHELF_READY.load(Ordering::SeqCst) {
+            let _ = w.emit("shelf:add", std::mem::take(&mut *SHELF.lock().unwrap_or_else(|e| e.into_inner())));
+        }
         let _ = w.show();
         return Ok(());
     }
+    SHELF_READY.store(false, Ordering::SeqCst);
     let (w, h) = (300.0, 460.0);
     let mut b = WebviewWindowBuilder::new(&app, "shelf", WebviewUrl::App("shelf.html".into()))
         .title("ShiftDrop shelf")
@@ -276,8 +291,13 @@ pub fn shelf_add_now(app: AppHandle, paths: Vec<String>) -> Result<(), String> {
 /// Files added before the shelf finished loading.
 #[tauri::command]
 pub fn shelf_take() -> Vec<String> {
-    std::mem::take(&mut *SHELF.lock().unwrap())
+    let mut list = SHELF.lock().unwrap_or_else(|e| e.into_inner());
+    SHELF_READY.store(true, Ordering::SeqCst);
+    std::mem::take(&mut *list)
 }
+
+/// The shelf page is listening for "shelf:add".
+static SHELF_READY: AtomicBool = AtomicBool::new(false);
 
 /// A small PNG for the cursor while dragging files out of the app.
 #[tauri::command]
@@ -327,14 +347,18 @@ pub fn open_peek_now(app: AppHandle, path: String) -> Result<(), String> {
 #[tauri::command]
 pub async fn read_text(path: String, max: usize) -> Result<String, String> {
     use std::io::Read;
-    let mut buf = vec![0u8; max];
-    let n = std::fs::File::open(&path).and_then(|mut f| f.read(&mut buf)).map_err(|e| e.to_string())?;
-    buf.truncate(n);
-    if buf.starts_with(&[0xFF, 0xFE]) {
-        let u: Vec<u16> = buf[2..].chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect();
-        return Ok(String::from_utf16_lossy(&u));
-    }
-    Ok(String::from_utf8_lossy(&buf).into_owned())
+    let mut buf = Vec::new();
+    std::fs::File::open(&path).and_then(|f| f.take(max.min(4 << 20) as u64).read_to_end(&mut buf)).map_err(|e| e.to_string())?;
+    let utf16 = |b: &[u8], be: bool| {
+        let u: Vec<u16> = b.chunks_exact(2).map(|c| if be { u16::from_be_bytes([c[0], c[1]]) } else { u16::from_le_bytes([c[0], c[1]]) }).collect();
+        String::from_utf16_lossy(&u)
+    };
+    Ok(match buf.as_slice() {
+        [0xFF, 0xFE, rest @ ..] => utf16(rest, false),
+        [0xFE, 0xFF, rest @ ..] => utf16(rest, true),
+        [0xEF, 0xBB, 0xBF, rest @ ..] => String::from_utf8_lossy(rest).into_owned(),
+        b => String::from_utf8_lossy(b).into_owned(),
+    })
 }
 
 #[derive(serde::Serialize)]

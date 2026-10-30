@@ -132,7 +132,12 @@ pub fn run(src: &Path, action: &Action, progress: Progress) -> Result<Vec<PathBu
             out_path(src, Some("Muted"), &ext(src))
         }
         Action::StripMetadata => {
-            args.extend(s(&["-map", "0", "-map_metadata", "-1", "-map_chapters", "-1", "-c", "copy"]));
+            // only picture, sound and subtitles: camera data tracks (timecode, GPS) can't be copied
+            // into every container; per-stream tags (creation time…) go too
+            args.extend(s(&[
+                "-map", "0:v?", "-map", "0:a?", "-map", "0:s?", "-map_metadata", "-1", "-map_metadata:s:v", "-1", "-map_metadata:s:a", "-1",
+                "-map_chapters", "-1", "-fflags", "+bitexact", "-c", "copy",
+            ]));
             out_path(src, Some("Clean"), &ext(src))
         }
         Action::Trim { start, end } => {
@@ -186,7 +191,7 @@ pub fn run(src: &Path, action: &Action, progress: Progress) -> Result<Vec<PathBu
             let af = if mode == "denoise" { "afftdn=nf=-25,highpass=f=80" } else { "loudnorm=I=-16:TP=-1.5:LRA=11" };
             let to = same_or(src, if is_video { "mp4" } else { "mp3" });
             let c = codec_args(&to)?;
-            if is_video {
+            if is_video && to == ext(src) {
                 // keep the picture as it is, re-encode only the sound
                 args.extend(s(&["-c:v", "copy"]));
                 let i = c.iter().position(|x| x == "-c:a").unwrap_or(c.len());
@@ -276,8 +281,12 @@ pub fn slideshow(paths: &[PathBuf], seconds: f64, progress: Progress) -> Result<
     // the demuxer only honours the last duration when the file is listed again
     txt += &concat_line(paths.last().context("no images")?);
     std::fs::write(&list, txt)?;
-    let (w, h) = image::image_dimensions(&paths[0]).unwrap_or((1920, 1080));
-    let (w, h) = (w.min(3840) / 2 * 2, h.min(2160) / 2 * 2);
+    if seconds.is_nan() || seconds <= 0.0 {
+        bail!("each picture needs to show for more than 0 seconds");
+    }
+    // size as the picture is seen (phone photos are often stored sideways)
+    let (w, h) = super::image::open(&paths[0]).map(|i| (i.width(), i.height())).unwrap_or((1920, 1080));
+    let (w, h) = ((w.min(3840) / 2 * 2).max(2), (h.min(2160) / 2 * 2).max(2));
     let out = out_path(&paths[0], Some("Slideshow"), "mp4");
     let vf = format!("scale={w}:{h}:force_original_aspect_ratio=decrease,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p");
     let args = s(&[
@@ -299,16 +308,12 @@ fn transcribe(src: &Path, burn: bool, progress: Progress) -> Result<Vec<PathBuf>
     tools::ffmpeg(&s(&["-i", &src.to_string_lossy(), "-vn", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", &wav.to_string_lossy()]), dur, &|p| progress(p * 0.1))?;
     let base = temp_file("sub");
     let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4).min(8).to_string();
-    let o = tools::quiet(&cli)
-        .arg("-m")
-        .arg(&model)
-        .args(["-l", "auto", "-t", &threads, "-osrt", "-of"])
-        .arg(&base)
-        .arg("-f")
-        .arg(&wav)
-        .output()?;
+    // generous: about real time on a slow PC, plus a margin
+    let limit = std::time::Duration::from_secs((dur * 3.0) as u64 + 600);
+    let o = tools::output_within(tools::quiet(&cli).arg("-m").arg(&model).args(["-l", "auto", "-t", &threads, "-osrt", "-of"]).arg(&base).arg("-f").arg(&wav), limit)?;
     let _ = std::fs::remove_file(&wav);
     let srt_tmp = PathBuf::from(format!("{}.srt", base.display()));
+    crate::naming::claim(&srt_tmp);
     if !o.status.success() || !srt_tmp.is_file() {
         bail!("speech recognition failed: {}", String::from_utf8_lossy(&o.stderr).lines().last().unwrap_or(""));
     }
@@ -345,7 +350,7 @@ pub fn merge(paths: &[PathBuf], progress: Progress) -> Result<Vec<PathBuf>> {
 
     let out = if video {
         let (w, h) = tools::video_size(&paths[0]).unwrap_or((1920, 1080));
-        let (w, h) = (w / 2 * 2, h / 2 * 2);
+        let (w, h) = ((w / 2 * 2).max(2), (h / 2 * 2).max(2));
         let mut next_input = n; // silent inputs are appended after the real files
         for (i, p) in paths.iter().enumerate() {
             filter += &format!(

@@ -132,6 +132,10 @@ pub async fn open_with(app: String, paths: Vec<String>) -> Result<(), String> {
             chosen = x32;
         }
     }
+    // a real file name never holds a quote; one here could add the app's own options
+    if paths.iter().any(|p| p.contains('"') || p.chars().any(char::is_control) || !Path::new(p).exists()) {
+        return Err("not a file".into());
+    }
     let args = paths.iter().map(|p| format!("\"{p}\"")).collect::<Vec<_>>().join(" ");
     launch(&chosen.target, &args)
 }
