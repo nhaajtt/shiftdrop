@@ -116,24 +116,36 @@ addView({
         h('p', { class: 'muted', style: 'margin-top:0' }, 'New files that land in the folder get the recipe. Files already there are left alone.'),
         ...s.watches.map((w, i) =>
           h('div', { class: 'field' }, h('div', { class: 'what' }, w.folder, h('small', {}, `${w.title}${w.exts.length ? ` · ${w.exts.join(', ')}` : ''}`)), h('button', { class: 'btn', onclick: async () => {
-            await settings.set({ watches: s.watches.filter((_, j) => j !== i) });
-            shared.show('recipes');
+            try {
+              await settings.set({ watches: s.watches.filter((_, j) => j !== i) });
+              shared.show('recipes');
+            } catch (e) {
+              ferr.hidden = false;
+              ferr.textContent = String(e);
+            }
           } }, 'Stop')),
         ),
         recipes.length
           ? h('div', {}, h('div', { class: 'field' }, fIn), h('div', { class: 'field' }, rSel, fExt, h('button', { class: 'btn', onclick: async () => {
               const folder = fIn.value.trim().replace(/^"|"$/g, '');
-              if (!(await invoke('folder_exists', { path: folder }))) {
+              try {
+                if (!(await invoke('folder_exists', { path: folder }))) {
+                  ferr.hidden = false;
+                  ferr.textContent = 'That folder does not exist.';
+                  return;
+                }
+                const r = recipes.find((x) => x.id === rSel.value);
+                if (!r) return;
+                const exts = fExt.value.split(/[\s,;]+/).map((e) => e.replace(/^\./, '').toLowerCase()).filter(Boolean);
+                await settings.set({ watches: [...s.watches, { folder, exts, title: r.name, action: { op: 'chain', steps: r.steps.map((x) => x.action) } }] });
+                shared.show('recipes');
+              } catch (e) {
                 ferr.hidden = false;
-                ferr.textContent = 'That folder does not exist.';
-                return;
+                ferr.textContent = String(e);
               }
-              const r = recipes.find((x) => x.id === rSel.value);
-              const exts = fExt.value.split(/[\s,;]+/).map((e) => e.replace(/^\./, '').toLowerCase()).filter(Boolean);
-              await settings.set({ watches: [...s.watches, { folder, exts, title: r.name, action: { op: 'chain', steps: r.steps.map((x) => x.action) } }] });
-              shared.show('recipes');
-            } }, 'Watch')), ferr)
+            } }, 'Watch')))
           : h('p', { class: 'muted' }, 'Make a recipe first.'),
+        ferr,
       ),
     );
   },

@@ -9,7 +9,10 @@ pub fn to_markdown(src: &Path) -> Result<PathBuf> {
     // a .docx is a zip; Windows' tar reads zips
     let dir = temp_file("docx");
     std::fs::create_dir_all(&dir)?;
-    let r = super::files::untar_one(src, &dir, "word/document.xml").and_then(|_| std::fs::read_to_string(dir.join("word").join("document.xml")).context("not a Word document"));
+    let r = super::files::untar_one(src, &dir, "word/document.xml").and_then(|_| {
+        let xml = super::files::read_capped(&dir.join("word").join("document.xml"), 200)?;
+        String::from_utf8(xml).ok().context("not a Word document")
+    });
     let _ = std::fs::remove_dir_all(&dir);
     let md = convert(&r?)?;
     let out = out_path(src, None, "md");
@@ -24,7 +27,7 @@ struct Para {
     text: String,
 }
 
-fn convert(xml: &str) -> Result<String> {
+pub(crate) fn convert(xml: &str) -> Result<String> {
     let mut r = quick_xml::Reader::from_str(xml);
     let mut out = String::new();
     let mut para: Option<Para> = None;
@@ -38,6 +41,8 @@ fn convert(xml: &str) -> Result<String> {
     let mut cell: Option<String> = None;
     loop {
         match r.read_event().context("broken document.xml")? {
+            // an empty <w:t/> has no text and no end tag to switch reading off again
+            Event::Empty(e) if e.local_name().as_ref() == b"t" => {}
             Event::Start(e) | Event::Empty(e) => match e.local_name().as_ref() {
                 b"tbl" => {
                     depth += 1;
@@ -70,7 +75,8 @@ fn convert(xml: &str) -> Result<String> {
                 b"i" => italic = attr(&e, b"val").is_none_or(|v| v != "0" && v != "false"),
                 b"t" => in_text = true,
                 b"tab" if in_run => push(&mut para, "\t"),
-                b"br" => push(&mut para, "  \n"),
+                // a table row is one line in Markdown, so a break inside a cell stays an HTML break
+                b"br" => push(&mut para, if cell.is_some() { "<br>" } else { "  \n" }),
                 _ => {}
             },
             Event::Text(t) if in_text => {

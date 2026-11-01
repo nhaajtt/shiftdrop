@@ -1,3 +1,48 @@
+// Listing the app's commands makes each one a permission of its own: a window can only call the
+// commands its capability file in capabilities/ grants it.
+const COMMANDS: &[&str] = &[
+    "clear_history",
+    "clipboard_files",
+    "context_menu",
+    "context_menu_on",
+    "drag_icon",
+    "file_info",
+    "folder_exists",
+    "get_apps",
+    "get_autostart",
+    "get_history",
+    "get_settings",
+    "hub_take",
+    "office_ok",
+    "open_editor",
+    "open_hub",
+    "open_link",
+    "open_logs",
+    "open_peek",
+    "open_with",
+    "overlay_hide",
+    "pdf_thumbs",
+    "read_text",
+    "rename_files",
+    "report_bug",
+    "reveal",
+    "run_action",
+    "sandbox_ok",
+    "set_autostart",
+    "share_lan",
+    "share_r2",
+    "shelf_add",
+    "shelf_take",
+    "toast_height",
+    "toast_hide",
+    "toast_show",
+    "tools_install",
+    "tools_status",
+    "trash",
+    "ui_log",
+    "update_settings",
+];
+
 fn main() {
-    tauri_build::build()
+    tauri_build::try_build(tauri_build::Attributes::new().app_manifest(tauri_build::AppManifest::new().commands(COMMANDS))).expect("tauri-build failed");
 }

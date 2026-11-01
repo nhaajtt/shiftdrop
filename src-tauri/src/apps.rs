@@ -136,7 +136,8 @@ pub async fn open_with(app: String, paths: Vec<String>) -> Result<(), String> {
     if paths.iter().any(|p| p.contains('"') || p.chars().any(char::is_control) || !Path::new(p).exists()) {
         return Err("not a file".into());
     }
-    let args = paths.iter().map(|p| format!("\"{p}\"")).collect::<Vec<_>>().join(" ");
+    // a trailing backslash (a drive root like C:\) would escape the closing quote: double it
+    let args = paths.iter().map(|p| if p.ends_with('\\') { format!("\"{p}\\\"") } else { format!("\"{p}\"") }).collect::<Vec<_>>().join(" ");
     launch(&chosen.target, &args)
 }
 

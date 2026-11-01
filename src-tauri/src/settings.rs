@@ -104,11 +104,12 @@ mod seal {
     }
 
     /// A value that is still sealed (could not be opened) is written back as it was.
-    pub fn lock(s: &str) -> String {
+    /// None when Windows couldn't seal it; the key is then never written in the clear.
+    pub fn lock(s: &str) -> Option<String> {
         if s.is_empty() || s.starts_with("dpapi:") {
-            return s.to_string();
+            return Some(s.to_string());
         }
-        run(s.as_bytes(), true).map(|v| format!("dpapi:{}", base64::engine::general_purpose::STANDARD.encode(v))).unwrap_or_default()
+        run(s.as_bytes(), true).map(|v| format!("dpapi:{}", base64::engine::general_purpose::STANDARD.encode(v)))
     }
 
     /// None when the value was sealed by another Windows account or PC.
@@ -120,8 +121,8 @@ mod seal {
 
 #[cfg(not(windows))]
 mod seal {
-    pub fn lock(s: &str) -> String {
-        s.to_string()
+    pub fn lock(s: &str) -> Option<String> {
+        Some(s.to_string())
     }
     pub fn unlock(s: &str) -> Option<String> {
         Some(s.to_string())
@@ -163,9 +164,30 @@ pub fn first_run(app: &AppHandle) -> bool {
     file(app).is_some_and(|p| !p.exists())
 }
 
+/// The settings file exists but couldn't be read (held by another program at start): saving
+/// would replace the user's settings with defaults, so it is left alone this session.
+static KEEP_FILE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 pub fn load(app: &AppHandle) -> Settings {
     let Some(p) = file(app) else { return Settings::default() };
-    let Ok(text) = fs::read_to_string(&p) else { return Settings::default() };
+    let mut read = fs::read(&p);
+    for _ in 0..10 {
+        if read.is_ok() || !p.exists() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        read = fs::read(&p);
+    }
+    let text = match read {
+        // not UTF-8 counts as damaged, like bad JSON below
+        Ok(t) => String::from_utf8_lossy(&t).into_owned(),
+        Err(_) if !p.exists() => return Settings::default(),
+        Err(e) => {
+            KEEP_FILE.store(true, std::sync::atomic::Ordering::Relaxed);
+            crate::log(&format!("settings: couldn't read the file ({e}); using defaults without overwriting it"));
+            return Settings::default();
+        }
+    };
     match serde_json::from_str::<Settings>(&text) {
         Ok(mut s) => {
             for v in s.secrets() {
@@ -213,6 +235,15 @@ fn try_update(app: &AppHandle, f: impl FnOnce(&mut Settings) -> Result<(), Strin
     let mut s = store.0.lock().unwrap_or_else(|e| e.into_inner());
     let mut next = s.clone();
     f(&mut next)?;
+    // a change that can't be saved is refused, so the window never shows something that is lost on restart
+    if KEEP_FILE.load(std::sync::atomic::Ordering::Relaxed) {
+        return Err("the settings file was busy when ShiftDrop started; restart ShiftDrop to change settings".into());
+    }
+    let mut sealed = next.clone();
+    for v in sealed.secrets() {
+        // writing would either expose the key or erase it
+        *v = seal::lock(v).ok_or("Windows couldn't protect the key, so it wasn't saved")?;
+    }
     *s = next;
     *CURRENT.lock().unwrap_or_else(|e| e.into_inner()) = Some(s.clone());
     #[cfg(windows)]
@@ -220,10 +251,6 @@ fn try_update(app: &AppHandle, f: impl FnOnce(&mut Settings) -> Result<(), Strin
     if let Some(p) = file(app) {
         if let Some(dir) = p.parent() {
             let _ = fs::create_dir_all(dir);
-        }
-        let mut sealed = s.clone();
-        for v in sealed.secrets() {
-            *v = seal::lock(v);
         }
         // write a new file and swap it in, so a crash mid-write can't leave half a file
         let tmp = p.with_extension("json.tmp");
@@ -282,12 +309,12 @@ pub async fn set_autostart(app: AppHandle, on: bool) -> Result<(), String> {
 mod tests {
     #[test]
     fn secrets_round_trip() {
-        let locked = super::seal::lock("sk-test-123");
+        let locked = super::seal::lock("sk-test-123").unwrap();
         assert!(locked.starts_with("dpapi:") && !locked.contains("sk-test"));
         assert_eq!(super::seal::unlock(&locked).as_deref(), Some("sk-test-123"));
         assert_eq!(super::seal::unlock("plain").as_deref(), Some("plain"));
         // a key sealed elsewhere is kept as it was, not wiped
         assert_eq!(super::seal::unlock("dpapi:AAAA"), None);
-        assert_eq!(super::seal::lock("dpapi:AAAA"), "dpapi:AAAA");
+        assert_eq!(super::seal::lock("dpapi:AAAA").as_deref(), Some("dpapi:AAAA"));
     }
 }

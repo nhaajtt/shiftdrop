@@ -8,8 +8,12 @@ use crate::{engines::security::{curl, curl_secret}, engines::tools::quiet, setti
 use anyhow::{bail, Context, Result};
 use std::{
     io::{Read, Write},
-    net::{TcpListener, UdpSocket},
+    net::{TcpListener, TcpStream, UdpSocket},
     path::{Path, PathBuf},
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc, Mutex,
+    },
     time::{Duration, Instant},
 };
 
@@ -19,15 +23,25 @@ fn token() -> String {
     b.iter().map(|x| format!("{x:02x}")).collect()
 }
 
-/// This PC's address on the local network (no packet is sent).
+/// This PC's address on the local network (no packet is sent). Only private addresses: on a
+/// public address or a VPN route the link would be reachable from outside the Wi-Fi.
 fn lan_ip() -> Result<std::net::IpAddr> {
     let s = UdpSocket::bind("0.0.0.0:0")?;
     s.connect("192.168.0.1:9")?;
     let ip = s.local_addr()?.ip();
-    if ip.is_loopback() || ip.is_unspecified() {
-        bail!("not connected to a local network");
+    if !is_private(ip) {
+        bail!("not connected to a private local network (Wi-Fi or home network), so the phone link wasn't opened");
     }
     Ok(ip)
+}
+
+fn is_private(ip: std::net::IpAddr) -> bool {
+    match ip {
+        // 10/8, 172.16/12, 192.168/16, 169.254/16
+        std::net::IpAddr::V4(v) => v.is_private() || v.is_link_local(),
+        // fc00::/7 (unique local) and fe80::/10 (link-local)
+        std::net::IpAddr::V6(v) => (v.segments()[0] & 0xfe00) == 0xfc00 || (v.segments()[0] & 0xffc0) == 0xfe80,
+    }
 }
 
 #[derive(serde::Serialize)]
@@ -71,63 +85,90 @@ fn lan(paths: Vec<String>) -> Result<LanShare> {
     Ok(LanShare { url, qr, minutes: LAN_MINUTES })
 }
 
-/// The first request line, read within 5 seconds and at most 2 KB, so a client that trickles bytes
-/// or never ends its line can't hold the only connection slot or fill memory.
-fn request_line(s: &std::net::TcpStream) -> Option<String> {
-    let until = Instant::now() + Duration::from_secs(5);
-    let mut line = Vec::new();
+/// The request line, after reading the whole request head (at most 8 KB within 3 seconds), so a
+/// client that trickles bytes can't hold a connection, and closing after the reply doesn't reset
+/// the download (Windows resets a socket that is closed with unread data).
+fn request_line(s: &TcpStream) -> Option<String> {
+    let until = Instant::now() + Duration::from_secs(3);
+    let mut head = Vec::new();
     let mut byte = [0u8; 1];
     let mut r = s;
-    while line.len() < 2048 && Instant::now() < until {
+    while head.len() < 8192 && Instant::now() < until {
         match r.read(&mut byte) {
-            Ok(1) if byte[0] == b'\n' => return String::from_utf8(line).ok(),
-            Ok(1) => line.push(byte[0]),
+            Ok(1) => {
+                head.push(byte[0]);
+                if head.ends_with(b"\r\n\r\n") || head.ends_with(b"\n\n") {
+                    let line = head.split(|&b| b == b'\n').next()?;
+                    return String::from_utf8(line.to_vec()).ok().map(|l| l.trim_end().to_string());
+                }
+            }
             _ => return None,
         }
     }
     None
 }
 
+/// Phones and browsers sometimes open a second connection; more than this at once is refused.
+const MAX_CONNECTIONS: usize = 4;
+
 fn serve(listener: TcpListener, file: PathBuf, prefix: String, life: Duration) {
-    let mut end = Instant::now() + life;
-    let mut delivered = false;
+    let end = Arc::new(Mutex::new(Instant::now() + life));
+    let open = Arc::new(AtomicUsize::new(0));
+    let file = Arc::new(file);
+    let prefix = Arc::new(prefix);
     let _ = listener.set_nonblocking(true);
-    while Instant::now() < end {
-        let Ok((mut s, _)) = listener.accept() else {
+    while Instant::now() < *end.lock().unwrap_or_else(|e| e.into_inner()) {
+        let Ok((s, _)) = listener.accept() else {
             std::thread::sleep(Duration::from_millis(200));
             continue;
         };
-        let _ = s.set_nonblocking(false);
-        let _ = s.set_read_timeout(Some(Duration::from_secs(5)));
-        // a client that stops reading must not hold the only connection slot forever
-        let _ = s.set_write_timeout(Some(Duration::from_secs(30)));
-        let Some(line) = request_line(&s) else { continue };
-        let path = line.split_whitespace().nth(1).unwrap_or("");
-        if !line.starts_with("GET ") || !path.starts_with(&prefix) {
-            let _ = s.write_all(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+        // a device that connects and stays silent can't block the real download
+        if open.load(Ordering::SeqCst) >= MAX_CONNECTIONS {
             continue;
         }
-        let Ok(mut f) = std::fs::File::open(&file) else { continue };
-        let len = f.metadata().map(|m| m.len()).unwrap_or(0);
-        let name = file.file_name().map(|n| n.to_string_lossy().replace('"', "")).unwrap_or_default();
-        let head = format!("HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: {len}\r\nContent-Disposition: attachment; filename*=UTF-8''{}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n", urlenc(&name));
-        if s.write_all(head.as_bytes()).is_ok() {
-            let mut buf = vec![0u8; 1 << 16];
-            let mut sent = 0u64;
-            while let Ok(n) = f.read(&mut buf) {
-                // the link's time limit holds during a slow download too
-                if n == 0 || Instant::now() > end + Duration::from_secs(120) || s.write_all(&buf[..n]).is_err() {
-                    break;
-                }
-                sent += n as u64;
-            }
-            // once the phone has the file the link closes; a minute's grace covers browsers
-            // that hand the download to a download manager which fetches it again
-            if sent == len && !delivered {
-                delivered = true;
-                end = end.min(Instant::now() + Duration::from_secs(60));
-            }
+        open.fetch_add(1, Ordering::SeqCst);
+        let (end, open, file, prefix) = (end.clone(), open.clone(), file.clone(), prefix.clone());
+        std::thread::spawn(move || {
+            answer(s, &file, &prefix, &end);
+            open.fetch_sub(1, Ordering::SeqCst);
+        });
+    }
+}
+
+fn answer(mut s: TcpStream, file: &Path, prefix: &str, end: &Mutex<Instant>) {
+    let deadline = || *end.lock().unwrap_or_else(|e| e.into_inner());
+    let _ = s.set_nonblocking(false);
+    let _ = s.set_read_timeout(Some(Duration::from_secs(3)));
+    // a client that stops reading must not hold a connection slot forever
+    let _ = s.set_write_timeout(Some(Duration::from_secs(30)));
+    let Some(line) = request_line(&s) else { return };
+    let path = line.split_whitespace().nth(1).unwrap_or("");
+    if !line.starts_with("GET ") || !path.starts_with(prefix) {
+        let _ = s.write_all(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+        return;
+    }
+    let Ok(mut f) = std::fs::File::open(file) else { return };
+    let len = f.metadata().map(|m| m.len()).unwrap_or(0);
+    let name = file.file_name().map(|n| n.to_string_lossy().replace('"', "")).unwrap_or_default();
+    let head = format!("HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: {len}\r\nContent-Disposition: attachment; filename*=UTF-8''{}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n", urlenc(&name));
+    if s.write_all(head.as_bytes()).is_err() {
+        return;
+    }
+    let mut buf = vec![0u8; 1 << 16];
+    let mut sent = 0u64;
+    while let Ok(n) = f.read(&mut buf) {
+        // the link's time limit holds during a slow download too
+        if n == 0 || Instant::now() > deadline() + Duration::from_secs(120) || s.write_all(&buf[..n]).is_err() {
+            break;
         }
+        sent += n as u64;
+    }
+    let _ = s.flush();
+    if sent == len {
+        // once the phone has the file the link closes; a minute's grace covers browsers
+        // that hand the download to a download manager which fetches it again
+        let mut e = end.lock().unwrap_or_else(|e| e.into_inner());
+        *e = (*e).min(Instant::now() + Duration::from_secs(60));
     }
 }
 
@@ -158,7 +199,7 @@ fn r2(paths: Vec<String>) -> Result<Vec<String>> {
         let key = format!("{}/{}", &token()[..12], urlenc(&name));
         let url = format!("https://{}.r2.cloudflarestorage.com/{}/{key}", s.r2_account.trim(), s.r2_bucket.trim());
         let o = curl_secret(
-            quiet(&curl()).args(["-sS", "--fail-with-body", "--max-time", "600", "--aws-sigv4", "aws:amz:auto:s3", "-T"]).arg(p).arg(&url),
+            quiet(&curl()).args(["-sS", "-g", "--fail-with-body", "--max-time", "600", "--aws-sigv4", "aws:amz:auto:s3", "-T"]).arg(p).arg(&url),
             &format!("user = \"{}:{}\"", s.r2_key.trim(), s.r2_secret.trim()),
         )?;
         if !o.status.success() {
@@ -166,6 +207,9 @@ fn r2(paths: Vec<String>) -> Result<Vec<String>> {
         }
         let base = s.r2_public.trim().trim_end_matches('/');
         links.push(if base.is_empty() { url } else { format!("{base}/{key}") });
+    }
+    if links.is_empty() {
+        bail!("none of these could be uploaded (only files can be)");
     }
     crate::clipboard::set(&links.join("\r\n"))?;
     Ok(links)
@@ -219,7 +263,13 @@ pub fn ask_claude(src: &Path, task: &str, lang: &str) -> Result<PathBuf> {
     if out_text.trim().is_empty() {
         bail!("the answer was empty");
     }
-    let suffix = if task == "translate" { lang.to_string() } else { "summary".into() };
+    // the language ends up in the file name: letters, digits, spaces and dashes only
+    let safe_lang: String = lang.chars().filter(|c| c.is_alphanumeric() || matches!(c, ' ' | '-')).take(40).collect();
+    let suffix = match task {
+        "translate" if !safe_lang.trim().is_empty() => safe_lang.trim().to_string(),
+        "translate" => "translated".into(),
+        _ => "summary".into(),
+    };
     let e = crate::naming::ext(src);
     let out = crate::naming::out_path(src, Some(&suffix), if e.is_empty() { "txt" } else { &e });
     std::fs::write(&out, out_text)?;

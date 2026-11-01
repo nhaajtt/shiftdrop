@@ -4,6 +4,7 @@ use anyhow::{bail, Result};
 
 #[cfg(windows)]
 pub fn set(text: &str) -> Result<()> {
+    use windows_sys::Win32::Foundation::GlobalFree;
     use windows_sys::Win32::System::{
         DataExchange::{CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData},
         Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE},
@@ -29,10 +30,17 @@ pub fn set(text: &str) -> Result<()> {
             CloseClipboard();
             bail!("out of memory");
         }
-        std::ptr::copy_nonoverlapping(wide.as_ptr(), GlobalLock(mem) as *mut u16, wide.len());
+        let dst = GlobalLock(mem) as *mut u16;
+        if dst.is_null() {
+            GlobalFree(mem);
+            CloseClipboard();
+            bail!("out of memory");
+        }
+        std::ptr::copy_nonoverlapping(wide.as_ptr(), dst, wide.len());
         GlobalUnlock(mem);
-        // on success the clipboard owns the memory
+        // on success the clipboard owns the memory; otherwise it is still ours to free
         if SetClipboardData(CF_UNICODETEXT, mem as _).is_null() {
+            GlobalFree(mem);
             CloseClipboard();
             bail!("couldn't copy");
         }

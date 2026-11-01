@@ -159,15 +159,18 @@ addView({
       }
     }
     const err = h('p', { class: 'tag err', hidden: true });
+    const submit = h('button', { type: 'submit', class: 'btn primary' }, it.danger ? 'Yes, do it' : 'Run');
     form.append(
       err,
       h('div', { style: 'display:flex;gap:8px;justify-content:flex-end;padding-top:12px' },
         h('button', { type: 'button', class: 'btn', onclick: () => show('actions') }, 'Cancel'),
-        h('button', { type: 'submit', class: `btn primary` }, it.danger ? 'Yes, do it' : 'Run'),
+        submit,
       ),
     );
     form.onsubmit = async (e) => {
       e.preventDefault();
+      // double Enter or click must not queue the job twice
+      if (submit.disabled) return;
       const values = {};
       for (const [f, inp] of inputs) {
         if (f.again) {
@@ -178,6 +181,8 @@ addView({
           }
         } else values[f.key] = f.number ? Number(inp.value) : inp.value;
       }
+      err.hidden = true;
+      submit.disabled = true;
       try {
         await runTarget({ ...it, ask: undefined, action: { ...it.action, ...values } }, files);
         asking = null;
@@ -185,6 +190,7 @@ addView({
       } catch (x) {
         err.hidden = false;
         err.textContent = String(x);
+        submit.disabled = false;
       }
     };
     root.append(form);
@@ -264,7 +270,7 @@ addView({
           savePrefs(q);
           show('menu');
         },
-      }, `Reset ${kind}`),
+      }, 'Reset ', kind),
     );
   },
 });
@@ -288,9 +294,9 @@ addView({
       toggle('Quick look', 'Ctrl+Space in File Explorer previews the selected file.', s.peek, (v) => settings.set({ peek: v })),
       toggle('Start with Windows', null, auto, (v) => invoke('set_autostart', { on: v })),
     );
-    const theme = h('select', { onchange: (e) => settings.set({ theme: e.target.value }) }, ['system', 'light', 'dark'].map((t) => h('option', { value: t, selected: s.theme === t }, t)));
+    const theme = h('select', { onchange: (e) => settings.set({ theme: e.target.value }).catch((x) => alertLine(String(x))) }, ['system', 'light', 'dark'].map((t) => h('option', { value: t, selected: s.theme === t }, t)));
     general.append(h('div', { class: 'field' }, h('div', { class: 'what' }, 'Appearance'), theme));
-    const lang = h('select', { onchange: (e) => settings.set({ lang: e.target.value }).then(() => location.reload()) }, [['system', 'system'], ['en', 'English'], ['vi', 'Tiếng Việt']].map(([v, l]) => h('option', { value: v, selected: (s.lang || 'system') === v, translate: 'no' }, l)));
+    const lang = h('select', { onchange: (e) => settings.set({ lang: e.target.value }).then(() => location.reload(), (x) => alertLine(String(x))) }, [['system', 'system'], ['en', 'English'], ['vi', 'Tiếng Việt']].map(([v, l]) => h('option', { value: v, selected: (s.lang || 'system') === v, translate: 'no' }, l)));
     general.append(h('div', { class: 'field' }, h('div', { class: 'what' }, 'Language'), lang));
     root.append(general);
     // one section failing (a check that errors) must not hide the ones after it
@@ -308,7 +314,9 @@ addView({
 
 function open(req) {
   if (!req) return;
+  // reopened from the tray or a toast without files: don't show the last run's chips
   if (req.paths?.length) files = req.paths;
+  else if (!req.item) files = [];
   if (req.item) asking = req.item;
   show(req.view === 'more' ? 'actions' : req.view || state.view);
 }

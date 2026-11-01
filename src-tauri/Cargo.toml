@@ -1,6 +1,6 @@
 [package]
 name = "shiftdrop"
-version = "1.0.9"
+version = "1.0.10"
 edition = "2021"
 
 [lib]
@@ -15,9 +15,10 @@ tauri = { version = "2", features = ["tray-icon", "protocol-asset", "image-png"]
 tauri-plugin-autostart = "2"
 tauri-plugin-single-instance = "2"
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde_json = { version = "1", features = ["preserve_order"] }
 anyhow = "1"
 image = "0.25"
+moxcms = "0.8"
 webp = "0.3"
 base64 = "0.22"
 sha2 = "0.10"
@@ -29,7 +30,7 @@ sha1 = "0.10"
 infer = "0.19"
 age = "0.11"
 serde_yaml = "0.9"
-toml = "0.8"
+toml = { version = "0.8", features = ["preserve_order"] }
 quick-xml = "0.37"
 similar = "2"
 qrcode = { version = "0.14", default-features = false, features = ["image", "svg"] }
@@ -52,6 +53,7 @@ windows-sys = { version = "0.61", features = [
   "Win32_UI_Input_KeyboardAndMouse",
   "Win32_System_LibraryLoader",
   "Win32_System_Threading",
+  "Win32_System_JobObjects",
   "Win32_Security_WinTrust",
   "Win32_Security_Cryptography",
   "Win32_System_RestartManager",
@@ -63,6 +65,7 @@ windows = { version = "0.62", features = [
   "Win32_System_Variant",
   "Win32_UI_Shell",
   "Win32_UI_Shell_Common",
+  "Win32_UI_Accessibility",
   "Win32_UI_WindowsAndMessaging",
   "Win32_System_WinRT",
   "Foundation",

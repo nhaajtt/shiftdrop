@@ -33,6 +33,10 @@ pub fn run(paths: &[PathBuf], action: &Action, progress: Progress) -> Result<Vec
             Ok(vec![])
         }
         Action::CopyText => {
+            let total: u64 = paths.iter().map(|p| std::fs::metadata(p).map(|m| m.len()).unwrap_or(0)).sum();
+            if total > 50 << 20 {
+                bail!("too much text to copy (over 50 MB)");
+            }
             let mut text = String::new();
             for p in paths {
                 text += &String::from_utf8_lossy(&std::fs::read(p)?);
@@ -49,6 +53,20 @@ pub fn run(paths: &[PathBuf], action: &Action, progress: Progress) -> Result<Vec
 
 fn name(p: &Path) -> String {
     p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
+}
+
+/// Reads a whole file, refusing ones too big to hold in memory comfortably.
+pub fn read_capped(p: &Path, max_mb: u64) -> Result<Vec<u8>> {
+    if std::fs::metadata(p)?.len() > max_mb << 20 {
+        bail!("this file is too big for this (over {max_mb} MB)");
+    }
+    Ok(std::fs::read(p)?)
+}
+
+/// tar reads a name starting with `-` as an option and one starting with `@` as "add this
+/// archive's contents", so those get a `./` in front.
+pub(crate) fn tar_member(name: &str) -> String {
+    if name.starts_with(['-', '@']) { format!("./{name}") } else { name.to_string() }
 }
 
 /// Windows' own bsdtar (zip, tar, gz, xz, bz2, 7z, rar); Git's tar on PATH can't write zips.
@@ -75,7 +93,7 @@ fn zip(paths: &[PathBuf]) -> Result<PathBuf> {
     let mut cmd = tar();
     cmd.arg("-a").arg("-c").arg("-f").arg(&out);
     for p in paths {
-        cmd.arg("-C").arg(p.parent().context("no folder")?).arg(name(p));
+        cmd.arg("-C").arg(p.parent().context("no folder")?).arg(tar_member(&name(p)));
     }
     let o = super::tools::output_within(&mut cmd, std::time::Duration::from_secs(1800))?;
     if !o.status.success() {
@@ -138,7 +156,7 @@ pub fn sha256(p: &Path) -> Result<String> {
 
 /// Printable ASCII and UTF-16LE runs of 5+ characters, like `strings -n 5`.
 fn strings(src: &Path) -> Result<PathBuf> {
-    let data = std::fs::read(src)?;
+    let data = read_capped(src, 200)?;
     let printable = |b: u8| (0x20..0x7f).contains(&b) || b == b'\t';
     let mut out = String::new();
     let mut run = String::new();
@@ -218,7 +236,8 @@ pub fn parse_pe(d: &[u8]) -> Option<Pe> {
     let pe = u32_at(d, 0x3c)? as usize;
     (d.get(pe..pe + 4)? == b"PE\0\0").then_some(())?;
     let coff = pe + 4;
-    let nsec = u16_at(d, coff + 2)? as usize;
+    // Windows itself won't load more than 96 sections; a forged count could make us re-scan the file thousands of times
+    let nsec = (u16_at(d, coff + 2)? as usize).min(96);
     let opt = coff + 20;
     let opt_size = u16_at(d, coff + 16)? as usize;
     let is64 = u16_at(d, opt)? == 0x20b;
@@ -232,7 +251,8 @@ pub fn parse_pe(d: &[u8]) -> Option<Pe> {
         let raw_name = d.get(s..s + 8)?;
         let name = String::from_utf8_lossy(raw_name).trim_end_matches('\0').to_string();
         let (vsize, rva, rsize, rptr) = (u32_at(d, s + 8)?, u32_at(d, s + 12)?, u32_at(d, s + 16)?, u32_at(d, s + 20)? as usize);
-        let body = d.get(rptr..(rptr + rsize as usize).min(d.len())).unwrap_or(&[]);
+        // only the bytes the section really has inside the file
+        let body = d.get(rptr..rptr.saturating_add(rsize as usize).min(d.len())).unwrap_or(&[]);
         sections.push((name, rva, vsize, rsize, entropy(body)));
     }
     let to_off = |rva: u32| {
@@ -289,7 +309,7 @@ pub fn parse_pe(d: &[u8]) -> Option<Pe> {
 /// Mandiant's import hash: MD5 of the comma-joined "dll.function" list. Groups malware families.
 pub fn imphash(p: &Path) -> Option<String> {
     use md5::Digest;
-    let pe = parse_pe(&std::fs::read(p).ok()?)?;
+    let pe = parse_pe(&read_capped(p, 200).ok()?)?;
     if pe.functions.is_empty() {
         return None;
     }
@@ -297,7 +317,7 @@ pub fn imphash(p: &Path) -> Option<String> {
 }
 
 fn pe_report(src: &Path) -> Result<PathBuf> {
-    let data = std::fs::read(src)?;
+    let data = read_capped(src, 200)?;
     let pe = parse_pe(&data).context("not a Windows executable (PE)")?;
     let machine = match pe.machine {
         0x14c => "x86 (32-bit)",

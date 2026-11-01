@@ -1,0 +1,23 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "toast-commands",
+  "description": "Progress and results: shows where outputs went, offers fixes and updates.",
+  "windows": [
+    "toast"
+  ],
+  "permissions": [
+    "allow-drag-icon",
+    "allow-get-history",
+    "allow-get-settings",
+    "allow-open-hub",
+    "allow-open-link",
+    "allow-report-bug",
+    "allow-reveal",
+    "allow-run-action",
+    "allow-toast-height",
+    "allow-toast-hide",
+    "allow-toast-show",
+    "allow-tools-install",
+    "allow-trash"
+  ]
+}

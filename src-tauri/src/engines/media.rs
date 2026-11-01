@@ -71,6 +71,18 @@ fn atempo(mut f: f64) -> String {
     parts.join(",")
 }
 
+/// FFmpeg can finish "successfully" without writing anything, e.g. when asked to start past the end.
+fn check_out(out: &Path, why: &str) -> Result<()> {
+    if std::fs::metadata(out).map(|m| m.len() == 0).unwrap_or(true) {
+        bail!("{why}");
+    }
+    Ok(())
+}
+
+fn file_mb(p: &Path) -> f64 {
+    std::fs::metadata(p).map(|m| m.len() as f64 / 1048576.0).unwrap_or(0.0)
+}
+
 fn trim_num(f: f64) -> String {
     let s = format!("{f:.2}");
     s.trim_end_matches('0').trim_end_matches('.').to_string()
@@ -144,6 +156,9 @@ pub fn run(src: &Path, action: &Action, progress: Progress) -> Result<Vec<PathBu
             if end <= start {
                 bail!("the end must be after the start");
             }
+            if total > 0.0 && *start >= total {
+                bail!("the start is past the end of the file");
+            }
             total = end - start;
             let to = same_or(src, if is_video { "mp4" } else { "mp3" });
             args = s(&["-ss", &format!("{start:.3}"), "-i", &src_s, "-t", &format!("{total:.3}")]);
@@ -205,8 +220,31 @@ pub fn run(src: &Path, action: &Action, progress: Progress) -> Result<Vec<PathBu
         _ => bail!("not available for this file"),
     };
     args.push(out.to_string_lossy().into_owned());
+    let known = total > 0.0;
     tools::ffmpeg(&args, total, progress)?;
+    match action {
+        Action::Trim { .. } => {
+            check_out(&out, "nothing to keep: the start is past the end of the file")?;
+            // a cut past the end still writes the file's header
+            if known && tools::duration(&out) <= 0.0 {
+                bail!("nothing to keep: the start is past the end of the file");
+            }
+        }
+        Action::Thumbnail => check_out(&out, "couldn't take a picture from this video")?,
+        _ => check_out(&out, "the result came out empty")?,
+    }
     Ok(vec![out])
+}
+
+/// ffmpeg's two-pass notes (`<name>-0.log`, `.mbtree`) go when the encode ends, however it ends.
+struct PassLog(String);
+
+impl Drop for PassLog {
+    fn drop(&mut self) {
+        for e in ["-0.log", "-0.log.mbtree"] {
+            let _ = std::fs::remove_file(format!("{}{e}", self.0));
+        }
+    }
 }
 
 /// Two-pass encode at the bitrate that lands just under `mb` megabytes.
@@ -218,50 +256,75 @@ fn target_size(src: &Path, mb: f64, progress: Progress) -> Result<Vec<PathBuf>> 
     let budget_kbit = mb * 8.0 * 1024.0 * 0.95; // 5% for container overhead
     let src_s = src.to_string_lossy().into_owned();
     let label = format!("{} MB", trim_num(mb));
+    let too_big = format!("couldn't get it under {label}; try a bigger size");
     if kind(src) == Kind::Audio {
-        let kbps = (budget_kbit / dur).clamp(16.0, 320.0) as u32;
+        let mut kbps = (budget_kbit / dur).clamp(16.0, 320.0);
         let out = out_path(src, Some(&label), "mp3");
-        let args = s(&["-i", &src_s, "-vn", "-c:a", "libmp3lame", "-b:a", &format!("{kbps}k"), &out.to_string_lossy()]);
-        tools::ffmpeg(&args, dur, progress)?;
-        return Ok(vec![out]);
+        // the encoder can overshoot: one more try a little lower, then give up honestly
+        for _ in 0..2 {
+            let args = s(&["-i", &src_s, "-vn", "-c:a", "libmp3lame", "-b:a", &format!("{}k", kbps as u32), &out.to_string_lossy()]);
+            tools::ffmpeg(&args, dur, progress)?;
+            check_out(&out, "the result came out empty")?;
+            let size = file_mb(&out);
+            if size <= mb {
+                note(&format!("{size:.1} MB (limit {label})"));
+                return Ok(vec![out]);
+            }
+            if kbps <= 16.0 {
+                break;
+            }
+            kbps = (kbps * mb / size * 0.9).max(16.0);
+        }
+        bail!("{too_big}");
     }
     let audio = if tools::has_audio(src) { (budget_kbit / dur * 0.12).clamp(32.0, 128.0) } else { 0.0 };
-    let video = budget_kbit / dur - audio;
+    let mut video = budget_kbit / dur - audio;
     if video < 50.0 {
         bail!("{label} is too small for a video this long");
     }
     // lower the resolution when the bitrate can't carry it
     let h = if video < 400.0 { 480 } else if video < 1200.0 { 720 } else { 1080 };
     let vf = format!("scale=-2:'min(ih,{h})',{EVEN}");
-    let v = format!("{}k", video as u32);
-    let log = temp_file("log");
-    let log_s = log.to_string_lossy().into_owned();
+    let log = PassLog(temp_file("log").to_string_lossy().into_owned());
+    let log_s = log.0.as_str();
     let null = if cfg!(windows) { "NUL" } else { "/dev/null" };
-    let pass1 = s(&["-i", &src_s, "-c:v", "libx264", "-preset", "medium", "-b:v", &v, "-vf", &vf, "-pass", "1", "-passlogfile", &log_s, "-an", "-f", "null", null]);
-    tools::ffmpeg(&pass1, dur, &|p| progress(p * 0.5))?;
     let out = out_path(src, Some(&label), "mp4");
-    let mut pass2 = s(&["-i", &src_s, "-c:v", "libx264", "-preset", "medium", "-b:v", &v, "-vf", &vf, "-pass", "2", "-passlogfile", &log_s, "-pix_fmt", "yuv420p"]);
-    if audio > 0.0 {
-        pass2.extend(s(&["-c:a", "aac", "-b:a", &format!("{}k", audio as u32)]));
-    } else {
-        pass2.push("-an".into());
+    for _ in 0..2 {
+        let v = format!("{}k", video as u32);
+        let pass1 = s(&["-i", &src_s, "-c:v", "libx264", "-preset", "medium", "-b:v", &v, "-vf", &vf, "-pass", "1", "-passlogfile", log_s, "-an", "-f", "null", null]);
+        tools::ffmpeg(&pass1, dur, &|p| progress(p * 0.5))?;
+        let mut pass2 = s(&["-i", &src_s, "-c:v", "libx264", "-preset", "medium", "-b:v", &v, "-vf", &vf, "-pass", "2", "-passlogfile", log_s, "-pix_fmt", "yuv420p"]);
+        if audio > 0.0 {
+            pass2.extend(s(&["-c:a", "aac", "-b:a", &format!("{}k", audio as u32)]));
+        } else {
+            pass2.push("-an".into());
+        }
+        pass2.extend(s(&["-movflags", "+faststart", &out.to_string_lossy()]));
+        tools::ffmpeg(&pass2, dur, &|p| progress(0.5 + p * 0.5))?;
+        check_out(&out, "the result came out empty")?;
+        let size = file_mb(&out);
+        if size <= mb {
+            note(&format!("{size:.1} MB (limit {label})"));
+            return Ok(vec![out]);
+        }
+        // the encoder overshot: one more try a little lower, then give up honestly
+        video = video * mb / size * 0.9;
+        if video < 50.0 {
+            break;
+        }
     }
-    pass2.extend(s(&["-movflags", "+faststart", &out.to_string_lossy()]));
-    let r = tools::ffmpeg(&pass2, dur, &|p| progress(0.5 + p * 0.5));
-    for e in ["-0.log", "-0.log.mbtree"] {
-        let _ = std::fs::remove_file(format!("{log_s}{e}"));
-    }
-    r?;
-    let size = std::fs::metadata(&out)?.len() as f64 / 1048576.0;
-    note(&format!("{size:.1} MB (limit {label})"));
-    Ok(vec![out])
+    bail!("{too_big}")
 }
 
 fn frames(src: &Path, every: f64, progress: Progress) -> Result<Vec<PathBuf>> {
     let dir = out_dir(src, "frames")?;
-    let pattern = dir.join("frame %04d.png");
-    let args = s(&["-i", &src.to_string_lossy(), "-vf", &format!("fps=1/{every}"), &pattern.to_string_lossy()]);
+    // the output is a numbered pattern, so a % in the folder name must be doubled
+    let pattern = format!("{}{}frame %04d.png", dir.to_string_lossy().replace('%', "%%"), std::path::MAIN_SEPARATOR);
+    let args = s(&["-i", &src.to_string_lossy(), "-vf", &format!("fps=1/{every}"), &pattern]);
     tools::ffmpeg(&args, tools::duration(src), progress)?;
+    if std::fs::read_dir(&dir)?.next().is_none() {
+        bail!("no frames came out of this video");
+    }
     Ok(vec![dir])
 }
 
@@ -272,30 +335,60 @@ fn concat_line(p: &Path) -> String {
 
 /// Images → MP4, each shown for `seconds`, letterboxed to the first image's size.
 pub fn slideshow(paths: &[PathBuf], seconds: f64, progress: Progress) -> Result<Vec<PathBuf>> {
+    if seconds.is_nan() || seconds <= 0.0 {
+        bail!("each picture needs to show for more than 0 seconds");
+    }
+    let first = paths.first().context("no images")?;
+    // the concat demuxer can't switch decoders or sizes between files, so every picture becomes
+    // a same-sized PNG first (this also turns sideways phone photos upright and reads HEIC)
+    let mut pngs = Vec::new();
+    let (mut w, mut h) = (1920, 1080);
+    let mut made = || -> Result<()> {
+        for (i, p) in paths.iter().enumerate() {
+            let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            let img = super::image::open(p).with_context(|| format!("can't read {name}"))?;
+            if i == 0 {
+                (w, h) = ((img.width().min(3840) / 2 * 2).max(2), (img.height().min(2160) / 2 * 2).max(2));
+            }
+            // every frame the same size and pixel format, letterboxed on black, or the demuxer drops it
+            let img = if (img.width(), img.height()) != (w, h) { img.resize(w, h, image::imageops::FilterType::Triangle) } else { img };
+            let mut frame = image::RgbaImage::from_pixel(w, h, image::Rgba([0, 0, 0, 255]));
+            image::imageops::overlay(&mut frame, &img.to_rgba8(), ((w - img.width().min(w)) / 2) as i64, ((h - img.height().min(h)) / 2) as i64);
+            let png = temp_file("png");
+            pngs.push(png.clone());
+            image::DynamicImage::ImageRgba8(frame).to_rgb8().save_with_format(&png, image::ImageFormat::Png)?;
+            progress((i + 1) as f32 / paths.len() as f32 * 0.3);
+        }
+        Ok(())
+    };
+    let r = made().and_then(|_| encode_slideshow(&pngs, first, seconds, w, h, &|p| progress(0.3 + p * 0.7)));
+    for p in &pngs {
+        let _ = std::fs::remove_file(p);
+    }
+    r
+}
+
+fn encode_slideshow(pngs: &[PathBuf], first: &Path, seconds: f64, w: u32, h: u32, progress: Progress) -> Result<Vec<PathBuf>> {
     let list = temp_file("txt");
     let mut txt = String::new();
-    for p in paths {
+    for p in pngs {
         txt += &concat_line(p);
         txt += &format!("duration {seconds}\n");
     }
     // the demuxer only honours the last duration when the file is listed again
-    txt += &concat_line(paths.last().context("no images")?);
+    txt += &concat_line(pngs.last().context("no images")?);
     std::fs::write(&list, txt)?;
-    if seconds.is_nan() || seconds <= 0.0 {
-        bail!("each picture needs to show for more than 0 seconds");
-    }
-    // size as the picture is seen (phone photos are often stored sideways)
-    let (w, h) = super::image::open(&paths[0]).map(|i| (i.width(), i.height())).unwrap_or((1920, 1080));
-    let (w, h) = ((w.min(3840) / 2 * 2).max(2), (h.min(2160) / 2 * 2).max(2));
-    let out = out_path(&paths[0], Some("Slideshow"), "mp4");
+    let out = out_path(first, Some("Slideshow"), "mp4");
     let vf = format!("scale={w}:{h}:force_original_aspect_ratio=decrease,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p");
+    let total = seconds * pngs.len() as f64;
     let args = s(&[
-        "-f", "concat", "-safe", "0", "-i", &list.to_string_lossy(), "-vf", &vf, "-t", &format!("{:.3}", seconds * paths.len() as f64),
+        "-f", "concat", "-safe", "0", "-i", &list.to_string_lossy(), "-vf", &vf, "-t", &format!("{total:.3}"),
         "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-movflags", "+faststart", &out.to_string_lossy(),
     ]);
-    let r = tools::ffmpeg(&args, seconds * paths.len() as f64, progress);
+    let r = tools::ffmpeg(&args, total, progress);
     let _ = std::fs::remove_file(&list);
     r?;
+    check_out(&out, "the result came out empty")?;
     Ok(vec![out])
 }
 
@@ -334,6 +427,7 @@ fn transcribe(src: &Path, burn: bool, progress: Progress) -> Result<Vec<PathBuf>
     let r = tools::ffmpeg_in(Some(&dir), &args, dur, &|p| progress(0.7 + p * 0.3));
     let _ = std::fs::remove_file(&srt_tmp);
     r?;
+    check_out(&out, "the result came out empty")?;
     Ok(vec![srt, out])
 }
 
@@ -389,6 +483,7 @@ pub fn merge(paths: &[PathBuf], progress: Progress) -> Result<Vec<PathBuf>> {
     };
     args.push(out.to_string_lossy().into_owned());
     tools::ffmpeg(&args, total, progress)?;
+    check_out(&out, "the result came out empty")?;
     Ok(vec![out])
 }
 
@@ -397,6 +492,7 @@ pub fn image_to_png(src: &Path) -> Result<PathBuf> {
     let tmp = crate::naming::temp_file("png");
     let args = s(&["-i", &src.to_string_lossy(), "-frames:v", "1", &tmp.to_string_lossy()]);
     tools::ffmpeg(&args, 0.0, &|_| {})?;
+    check_out(&tmp, "can't read this image")?;
     Ok(tmp)
 }
 

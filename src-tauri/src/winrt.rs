@@ -6,7 +6,7 @@ use std::path::Path;
 use windows::{
     core::HSTRING,
     Globalization::Language,
-    Graphics::Imaging::{BitmapDecoder, BitmapEncoder, BitmapPixelFormat, SoftwareBitmap},
+    Graphics::Imaging::{BitmapAlphaMode, BitmapDecoder, BitmapEncoder, BitmapPixelFormat, BitmapTransform, ColorManagementMode, ExifOrientationMode, SoftwareBitmap},
     Media::Ocr::OcrEngine,
     Storage::{
         FileAccessMode, StorageFile,
@@ -32,11 +32,29 @@ fn bitmap(path: &Path) -> Result<SoftwareBitmap> {
     let file = StorageFile::GetFileFromPathAsync(&HSTRING::from(full))?.join()?;
     let stream = file.OpenAsync(FileAccessMode::Read)?.join()?;
     let dec = BitmapDecoder::CreateAsync(&stream)?.join().context("Windows has no codec for this image")?;
-    Ok(dec.GetSoftwareBitmapAsync()?.join()?)
+    // upright and in sRGB: iPhone HEIC photos are Display P3 and would look washed out otherwise
+    Ok(dec
+        .GetSoftwareBitmapTransformedAsync(BitmapPixelFormat::Bgra8, BitmapAlphaMode::Straight, &BitmapTransform::new()?, ExifOrientationMode::RespectExifOrientation, ColorManagementMode::ColorManageToSRgb)?
+        .join()?)
 }
 
 /// Decodes with Windows' codecs (HEIC, RAW, JXR…) and returns PNG bytes.
 pub fn decode_to_png(path: &Path) -> Result<Vec<u8>> {
+    within(path, decode_to_png_now)
+}
+
+/// Runs a Windows imaging call on its own thread with a time limit: a file that is only in
+/// OneDrive or a codec that hangs must not hold up the job queue for good.
+fn within<T: Send + 'static>(path: &Path, f: fn(&Path) -> Result<T>) -> Result<T> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let path = path.to_path_buf();
+    std::thread::spawn(move || {
+        let _ = tx.send(f(&path));
+    });
+    rx.recv_timeout(std::time::Duration::from_secs(120)).unwrap_or_else(|_| Err(anyhow::anyhow!("Windows took too long to read this picture")))
+}
+
+fn decode_to_png_now(path: &Path) -> Result<Vec<u8>> {
     let bmp = bitmap(path)?;
     let bmp = SoftwareBitmap::Convert(&bmp, BitmapPixelFormat::Bgra8)?;
     let mem = InMemoryRandomAccessStream::new()?;
@@ -53,6 +71,10 @@ pub fn decode_to_png(path: &Path) -> Result<Vec<u8>> {
 
 /// Text in the image, line by line. Uses the user's Windows languages, English as a fallback.
 pub fn ocr(path: &Path) -> Result<String> {
+    within(path, ocr_now)
+}
+
+fn ocr_now(path: &Path) -> Result<String> {
     let bmp = bitmap(path)?;
     let bmp = SoftwareBitmap::Convert(&bmp, BitmapPixelFormat::Bgra8)?;
     let engine = OcrEngine::TryCreateFromUserProfileLanguages()

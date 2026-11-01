@@ -96,7 +96,8 @@ pub fn show_overlay(app: &AppHandle, x: i32, y: i32, paths: &[PathBuf]) {
     let s = (OVERLAY * scale).round() as i32;
     let left = (x - s / 2).clamp(mp.x, mp.x + ms.width as i32 - s);
     let top = (y - s / 2).clamp(mp.y, mp.y + ms.height as i32 - s);
-    *ORIGIN.lock().unwrap() = (left, top);
+    *ORIGIN.lock().unwrap_or_else(|e| e.into_inner()) = (left, top);
+    SHOWN.fetch_add(1, Ordering::SeqCst);
     let warnings = paths.iter().take(50).filter_map(|p| crate::engines::security::disguise(p)).collect();
     let _ = w.emit("overlay:show", Show { paths, backdrop: backdrop(left, top, s), warnings });
     place(&w, left, top, s, s);
@@ -106,9 +107,30 @@ pub fn show_overlay(app: &AppHandle, x: i32, y: i32, paths: &[PathBuf]) {
 
 /// Cursor moved (`drop` = button released) during a drag that has the menu open.
 pub fn overlay_pointer(app: &AppHandle, x: i32, y: i32, drop: bool) {
-    let (left, top) = *ORIGIN.lock().unwrap();
+    let (left, top) = *ORIGIN.lock().unwrap_or_else(|e| e.into_inner());
     let event = if drop { "overlay:drop" } else { "overlay:move" };
     let _ = app.emit_to("overlay", event, (x - left, y - top));
+    if drop {
+        hide_overlay_later(app);
+    }
+}
+
+/// Counts menu openings, so a late safety hide never closes a newer menu.
+static SHOWN: AtomicU32 = AtomicU32::new(0);
+
+/// The wheel hides itself after a drop or Escape. If its page doesn't answer (it failed to load,
+/// an event was lost), hide it from here, so a topmost window never stays over the screen and
+/// number keys aren't held back.
+pub fn hide_overlay_later(app: &AppHandle) {
+    let (app, shown) = (app.clone(), SHOWN.load(Ordering::SeqCst));
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_secs(3));
+        let visible = app.get_webview_window("overlay").is_some_and(|w| w.is_visible().unwrap_or(false));
+        if visible && SHOWN.load(Ordering::SeqCst) == shown {
+            crate::log("overlay didn't close itself; hidden");
+            hide_overlay(&app);
+        }
+    });
 }
 
 pub fn hide_overlay(app: &AppHandle) {

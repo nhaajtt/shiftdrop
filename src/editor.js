@@ -26,6 +26,42 @@ function h(tag, attrs = {}, ...kids) {
   return e;
 }
 
+/** Message line under the controls. A blocked editor can't save (nothing usable to edit). */
+let blocked = false;
+const say = (msg) => {
+  $('error').hidden = !msg;
+  $('error').textContent = msg || '';
+};
+function block(msg = "This file can't be previewed here, so it can't be edited in this window.") {
+  blocked = true;
+  say(msg);
+  $('save').disabled = true;
+}
+function unblock() {
+  if (!blocked) return;
+  blocked = false;
+  say('');
+  $('save').disabled = false;
+}
+
+/** Follows one drag: move events until the pointer is released, cancelled or lost. */
+function track(el, e, move, done) {
+  try {
+    el.setPointerCapture(e.pointerId);
+  } catch {}
+  const off = [];
+  const on = (n, f) => (el.addEventListener(n, f), off.push(() => el.removeEventListener(n, f)));
+  let over = false;
+  const end = (ev) => {
+    if (over) return;
+    over = true;
+    off.forEach((f) => f());
+    done?.(ev);
+  };
+  on('pointermove', move);
+  for (const n of ['pointerup', 'pointercancel', 'lostpointercapture']) on(n, end);
+}
+
 const group = (label, ...kids) => h('div', { class: 'group' }, h('span', { class: 'label' }, label), ...kids);
 
 /** Row of toggle buttons; returns a function that marks the chosen one. */
@@ -62,7 +98,8 @@ function imageFrame(onFit) {
     frame.style.height = `${img.naturalHeight * s}px`;
     onFit?.();
   };
-  img.addEventListener('load', fit);
+  img.addEventListener('load', () => (img.naturalWidth ? unblock() : block(), fit()));
+  img.addEventListener('error', () => block());
   new ResizeObserver(fit).observe(stage);
   return { img, frame };
 }
@@ -115,7 +152,7 @@ function crop() {
   }
 
   frame.addEventListener('pointerdown', (e) => {
-    frame.setPointerCapture(e.pointerId);
+    if (!img.naturalWidth) return;
     const p0 = frac(frame, e);
     const handle = e.target.dataset?.h;
     const start = { ...r };
@@ -133,12 +170,7 @@ function crop() {
       }
       draw();
     };
-    const up = () => {
-      frame.removeEventListener('pointermove', move);
-      frame.removeEventListener('pointerup', up);
-    };
-    frame.addEventListener('pointermove', move);
-    frame.addEventListener('pointerup', up);
+    track(frame, e, move);
   });
 
   const ratios = [['Free', 0], ['1:1', 1], ['4:3', 4 / 3], ['3:2', 3 / 2], ['16:9', 16 / 9], ['9:16', 9 / 16]];
@@ -148,7 +180,11 @@ function crop() {
     group('Selection', h('div', { class: 'row' }, h('button', { class: 'btn', onclick: () => ((r = { x: 0, y: 0, w: 1, h: 1 }), applyRatio(ratio)) }, 'Select all'))),
   );
   draw();
-  return () => ({ action: { op: 'crop', rect: [r.x, r.y, r.w, r.h] }, title: 'Cropping' });
+  return () => {
+    // never save the default rectangle of a picture that isn't there
+    if (!img.naturalWidth) throw new Error('The file is still loading.');
+    return { action: { op: 'crop', rect: [r.x, r.y, r.w, r.h] }, title: 'Cropping' };
+  };
 }
 
 /* ------------------------------------------------------- add background */
@@ -172,7 +208,8 @@ function addBg() {
       boxShadow: pad ? `0 ${pad * 0.25 * s}px ${pad * 0.9 * s}px rgb(0 0 0 / ${(o.shadow / 100) * 0.45})` : 'none',
     });
   }
-  img.addEventListener('load', draw);
+  img.addEventListener('load', () => (img.naturalWidth ? unblock() : block(), draw()));
+  img.addEventListener('error', () => block());
   new ResizeObserver(draw).observe(stage);
 
   const palette = ['#FFFFFF', '#F3F1EC', '#EBE8DE', '#161512', '#000000', '#D9B84A', '#765E0E', '#3E5378', '#8FA3C8', '#A3385C', '#E07A9A', '#2F7D4F'];
@@ -192,15 +229,18 @@ function addBg() {
     slider('Corner radius', 0, 20, o.radius, '%', (v) => ((o.radius = v), draw())),
     slider('Shadow', 0, 100, o.shadow, '%', (v) => ((o.shadow = v), draw())),
   );
-  return () => ({
-    action: { op: 'add_bg', color: o.color, padding: o.padding / 100, radius: o.radius / 100, shadow: o.shadow / 100 },
-    title: 'Adding background',
-  });
+  return () => {
+    if (!img.naturalWidth) throw new Error('The file is still loading.');
+    return {
+      action: { op: 'add_bg', color: o.color, padding: o.padding / 100, radius: o.radius / 100, shadow: o.shadow / 100 },
+      title: 'Adding background',
+    };
+  };
 }
 
 /* ---------------------------------------------------------------- redact */
 function redact() {
-  const { frame } = imageFrame();
+  const { img, frame } = imageFrame();
   frame.classList.add('drawing');
   const boxes = [];
   const count = h('span', { class: 'value' }, '0 areas');
@@ -208,7 +248,7 @@ function redact() {
   const refresh = () => (count.textContent = `${boxes.length} area${boxes.length === 1 ? '' : 's'}`);
 
   frame.addEventListener('pointerdown', (e) => {
-    frame.setPointerCapture(e.pointerId);
+    if (!img.naturalWidth) return;
     const a = frac(frame, e);
     const el = h('div', { class: 'redact-box' });
     frame.append(el);
@@ -218,15 +258,11 @@ function redact() {
       b = [Math.min(a[0], p[0]), Math.min(a[1], p[1]), Math.abs(p[0] - a[0]), Math.abs(p[1] - a[1])];
       place(el, b);
     };
-    const up = () => {
-      frame.removeEventListener('pointermove', move);
-      frame.removeEventListener('pointerup', up);
-      if (b[2] < 0.005 || b[3] < 0.005) return el.remove();
+    track(frame, e, move, (ev) => {
+      if (ev?.type === 'pointercancel' || b[2] < 0.005 || b[3] < 0.005) return el.remove();
       boxes.push({ b, el });
       refresh();
-    };
-    frame.addEventListener('pointermove', move);
-    frame.addEventListener('pointerup', up);
+    });
   });
 
   const undo = () => (boxes.pop()?.el.remove(), refresh());
@@ -244,6 +280,7 @@ function redact() {
     ),
   );
   return () => {
+    if (!img.naturalWidth) throw new Error('The file is still loading.');
     if (!boxes.length) throw new Error('Draw at least one area first.');
     return { action: { op: 'redact', boxes: boxes.map((x) => x.b) }, title: 'Redacting' };
   };
@@ -256,10 +293,11 @@ function fmt(t) {
   return `${m}:${(t - m * 60).toFixed(1).padStart(4, '0')}`;
 }
 
+// "1:05", "0:05.5" and "0:05,5" (decimal comma) all work; anything else is NaN
 function parseTime(s) {
-  const parts = s.trim().split(':').map(Number);
-  if (parts.some(isNaN)) return NaN;
-  return parts.reduce((acc, v) => acc * 60 + v, 0);
+  const raw = s.trim().replace(',', '.');
+  if (!/^\d+(\.\d+)?(:\d+(\.\d+)?){0,2}$/.test(raw)) return NaN;
+  return raw.split(':').map(Number).reduce((acc, v) => acc * 60 + v, 0);
 }
 
 function trim() {
@@ -293,16 +331,23 @@ function trim() {
 
   media.addEventListener('loadedmetadata', () => {
     d = media.duration || 0;
+    if (!isFinite(d) || !d) return block();
+    clearTimeout(waiting);
+    unblock();
     set(0, d);
   });
+  // a format the webview can't play never gets here: say so instead of waiting for ever
+  media.addEventListener('error', () => block());
+  const waiting = setTimeout(() => !d && block(), 10000);
   media.addEventListener('timeupdate', () => {
     if (looping && media.currentTime >= b) media.pause();
     draw();
   });
+  // the preview ends at the end mark; later plays run normally
+  media.addEventListener('pause', () => (looping = false));
 
   line.addEventListener('pointerdown', (e) => {
     if (!d) return;
-    line.setPointerCapture(e.pointerId);
     const at = (ev) => {
       const r = line.getBoundingClientRect();
       return clamp((ev.clientX - r.left) / r.width, 0, 1) * d;
@@ -318,22 +363,30 @@ function trim() {
       draw();
     };
     move(e);
-    const up = () => {
-      line.removeEventListener('pointermove', move);
-      line.removeEventListener('pointerup', up);
-    };
-    line.addEventListener('pointermove', move);
-    line.addEventListener('pointerup', up);
+    track(line, e, move);
   });
 
-  startIn.addEventListener('change', () => set(parseTime(startIn.value) || 0, b));
-  endIn.addEventListener('change', () => set(a, parseTime(endIn.value) || d));
+  // typed times: bad text or an empty range is refused and the old value comes back
+  const typed = (input, why, apply, bad) => {
+    if (!d) return;
+    const v = parseTime(input.value);
+    if (isNaN(v)) say('Use a time like 1:05 or 0:05.5.');
+    else if (bad(v)) say(why);
+    else {
+      say('');
+      apply(v);
+    }
+    startIn.value = fmt(a);
+    endIn.value = fmt(b);
+  };
+  startIn.addEventListener('change', () => typed(startIn, 'Start must be before the end.', (v) => set(v, b), (v) => v >= b));
+  endIn.addEventListener('change', () => typed(endIn, 'End must be after the start.', (v) => set(a, v), (v) => v <= a));
 
   let looping = false;
   const preview = () => {
     looping = true;
     media.currentTime = a;
-    media.play();
+    media.play().catch(() => (looping = false));
   };
   addEventListener('keydown', (e) => {
     if (e.target instanceof HTMLInputElement) return;
@@ -348,21 +401,20 @@ function trim() {
   );
   return () => {
     if (!d) throw new Error('The file is still loading.');
+    if (b <= a) throw new Error('End must be after the start.');
     return { action: { op: 'trim', start: a, end: b }, title: 'Trimming' };
   };
 }
 
 /* ----------------------------------------------------------------- pdf pages */
-async function thumbs(width) {
+async function thumbs(width, only) {
   const note = h('p', { class: 'label' }, 'Loading pages…');
   stage.append(note);
   try {
-    return await invoke('pdf_thumbs', { path, width });
+    return await invoke('pdf_thumbs', { path, width, only });
   } catch (e) {
     // a damaged or password-protected PDF: say so instead of loading forever
-    $('error').hidden = false;
-    $('error').textContent = String(e);
-    $('save').disabled = true;
+    block(String(e));
     return [];
   } finally {
     note.remove();
@@ -434,7 +486,6 @@ function sign() {
   let inked = false;
   const clear = () => (g.clearRect(0, 0, pad.width, pad.height), (inked = false));
   pad.addEventListener('pointerdown', (e) => {
-    pad.setPointerCapture(e.pointerId);
     const r = pad.getBoundingClientRect();
     const at = (ev) => [((ev.clientX - r.left) / r.width) * pad.width, ((ev.clientY - r.top) / r.height) * pad.height];
     g.lineWidth = 3.2;
@@ -443,9 +494,7 @@ function sign() {
     g.beginPath();
     g.moveTo(...at(e));
     const move = (ev) => (g.lineTo(...at(ev)), g.stroke(), (inked = true));
-    const up = () => (pad.removeEventListener('pointermove', move), pad.removeEventListener('pointerup', up));
-    pad.addEventListener('pointermove', move);
-    pad.addEventListener('pointerup', up);
+    track(pad, e, move);
   });
   const typed = h('input', { type: 'text', placeholder: 'or type your name', class: 'text' });
   typed.addEventListener('input', () => {
@@ -459,7 +508,7 @@ function sign() {
 
   // place by dragging on the page
   view.addEventListener('pointerdown', (e) => {
-    view.setPointerCapture(e.pointerId);
+    if (!img.naturalWidth) return;
     const a = frac(view, e);
     const move = (ev) => {
       const p = frac(view, ev);
@@ -467,16 +516,21 @@ function sign() {
       Object.assign(mark.style, { left: `${box[0] * 100}%`, top: `${box[1] * 100}%`, width: `${box[2] * 100}%`, height: `${box[3] * 100}%` });
       mark.hidden = false;
     };
-    const up = () => (view.removeEventListener('pointermove', move), view.removeEventListener('pointerup', up));
-    view.addEventListener('pointermove', move);
-    view.addEventListener('pointerup', up);
+    track(view, e, move);
   });
 
-  const pageSel = h('select', { onchange: (e) => ((page = +e.target.value), (img.src = list[page]), (box = null), (mark.hidden = true)) });
-  thumbs(900).then((l) => {
+  // only the chosen page is drawn large, so a long PDF still opens quickly
+  const showPage = async (i) => {
+    if (!list[i]) list[i] = (await invoke('pdf_thumbs', { path, width: 900, only: i }).catch(() => []))[i] || '';
+    if (page === i && list[i]) img.src = list[i];
+  };
+  const pageSel = h('select', { onchange: (e) => ((page = +e.target.value), (box = null), (mark.hidden = true), showPage(page)) });
+  thumbs(900, 0).then((l) => {
     list = l;
     l.forEach((_, i) => pageSel.append(h('option', { value: i }, `Page ${i + 1}`)));
-    img.src = l[0];
+    // a failed or empty list leaves the page blank (thumbs already said why)
+    if (l[0]) img.src = l[0];
+    else if (!blocked) block('This PDF has no pages.');
   });
   controls.append(
     group('Signature', pad, typed, h('div', { class: 'row' }, h('button', { class: 'btn', onclick: () => ((typed.value = ''), clear()) }, 'Clear'))),
@@ -497,7 +551,8 @@ function sign() {
 
   return () => {
     if (!inked) throw new Error('Draw or type a signature first.');
-    if (!box || box[2] < 0.01) throw new Error('Drag a box on the page to place it.');
+    if (!list[page] || !img.naturalWidth) throw new Error('The file is still loading.');
+    if (!box || box[2] < 0.01 || box[3] < 0.01) throw new Error('Drag a box on the page to place it.');
     const { png, ratio } = ink();
     // keep the signature's own shape inside the box
     const pageRatio = img.naturalWidth / img.naturalHeight;
@@ -523,7 +578,7 @@ const win = getCurrentWindow();
 let saving = false;
 async function save() {
   // one job per click, however fast Save or Enter is pressed
-  if (saving) return;
+  if (saving || blocked) return;
   saving = true;
   try {
     const { action, title } = getResult();

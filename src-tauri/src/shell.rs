@@ -150,6 +150,10 @@ pub async fn rename_files(pairs: Vec<(String, String)>) -> Result<usize, String>
     if sources.len() != pairs.len() {
         return Err("the same file is listed twice".into());
     }
+    // renaming only: a pattern like "..\x" must not move files into another folder
+    if let Some((_, b)) = pairs.iter().find(|(a, b)| a.parent() != b.parent() || b.file_name().is_none()) {
+        return Err(format!("{} would move the file to another folder", b.display()));
+    }
     if let Some((a, _)) = pairs.iter().find(|(a, _)| !a.exists()) {
         return Err(format!("{} no longer exists", a.display()));
     }

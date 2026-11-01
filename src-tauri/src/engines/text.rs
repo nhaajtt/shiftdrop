@@ -54,18 +54,83 @@ img{max-width:100%}blockquote{margin-left:0;padding-left:16px;border-left:3px so
 /// .md with `<iframe src="file:///…">` would otherwise copy a local file into the PDF.
 /// Pictures are allowed (relative ones resolve next to the source through `base`).
 fn page(title: &str, body: &str, base: &str) -> String {
-    format!("<!doctype html><html><head><meta charset=\"utf-8\"><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; img-src data: file:; style-src 'unsafe-inline'; font-src data:\"><base href=\"{}\"><title>{}</title><style>{STYLE}</style></head><body>{body}</body></html>", escape(base), escape(title))
+    format!("<!doctype html><html><head><meta charset=\"utf-8\">{}<title>{}</title><style>{STYLE}</style></head><body>{body}</body></html>", lockdown(base), escape(title))
+}
+
+/// The policy every printed page gets, plus the folder relative pictures are read from.
+fn lockdown(base: &str) -> String {
+    format!("<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; img-src data: file:; style-src 'unsafe-inline' file:; font-src data: file:\"><base href=\"{}\">", escape(base))
+}
+
+/// A stranger's HTML file gets the same lockdown as Markdown, and loses its `<meta http-equiv>`
+/// tags: a refresh to `file:///…` would otherwise print some other local file into the PDF.
+/// A `Content-Type` one (the page's own character set) stays when the bytes are kept as they were.
+pub(crate) fn lock_html(html: &str, base: &str) -> String {
+    lock_html_with(html, base, false)
+}
+
+fn lock_html_with(html: &str, base: &str, keep_charset: bool) -> String {
+    let lower = html.to_ascii_lowercase();
+    let b = lower.as_bytes();
+    let mut out = String::with_capacity(html.len() + 300);
+    // after the doctype, so the page isn't switched to quirks mode
+    let start = {
+        let t = lower.trim_start_matches(['\u{feff}', ' ', '\t', '\r', '\n']);
+        if t.starts_with("<!doctype") { lower.len() - t.len() + t.find('>').map_or(0, |i| i + 1) } else { 0 }
+    };
+    out.push_str(&html[..start]);
+    out.push_str(&lockdown(base));
+    let mut i = start;
+    while let Some(off) = lower[i..].find("<meta") {
+        let at = i + off;
+        // the tag ends at the first `>` outside a quoted attribute value
+        let mut j = at + 5;
+        while j < b.len() && b[j] != b'>' {
+            if b[j] == b'=' {
+                j += 1;
+                while j < b.len() && b[j].is_ascii_whitespace() {
+                    j += 1;
+                }
+                if j < b.len() && (b[j] == b'"' || b[j] == b'\'') {
+                    let q = b[j];
+                    j += 1;
+                    while j < b.len() && b[j] != q {
+                        j += 1;
+                    }
+                    j += 1;
+                }
+                continue;
+            }
+            j += 1;
+        }
+        let end = (j + 1).min(b.len());
+        out.push_str(&html[i..at]);
+        let tag = &lower[at..end];
+        if !tag.contains("http-equiv") || (keep_charset && tag.contains("content-type")) {
+            out.push_str(&html[at..end]);
+        }
+        i = end;
+    }
+    out.push_str(&html[i..]);
+    out
+}
+
+/// Markdown can carry raw HTML; it is shown as text instead, so it can't load or redirect anything.
+pub(crate) fn markdown(text: &str) -> String {
+    use pulldown_cmark::Event;
+    let mut html = String::new();
+    let events = pulldown_cmark::Parser::new_ext(text, pulldown_cmark::Options::all()).map(|e| match e {
+        Event::Html(t) | Event::InlineHtml(t) => Event::Text(t),
+        e => e,
+    });
+    pulldown_cmark::html::push_html(&mut html, events);
+    html
 }
 
 pub fn to_html(src: &Path) -> Result<String> {
     let text = read(src)?;
     let body = match ext(src).as_str() {
-        "md" | "markdown" => {
-            let mut html = String::new();
-            let opts = pulldown_cmark::Options::all();
-            pulldown_cmark::html::push_html(&mut html, pulldown_cmark::Parser::new_ext(&text, opts));
-            html
-        }
+        "md" | "markdown" => markdown(&text),
         "html" | "htm" => return Ok(text),
         "csv" | "tsv" => {
             let rows = parse_csv(&text, if ext(src) == "tsv" { '\t' } else { ',' });
@@ -96,15 +161,29 @@ fn edge() -> Option<PathBuf> {
 
 fn to_pdf(src: &Path) -> Result<PathBuf> {
     let edge = edge().context("Microsoft Edge is needed to make PDFs from text")?;
-    // HTML files print as they are (relative images keep working); everything else is wrapped first
-    let html = if matches!(ext(src).as_str(), "html" | "htm") {
-        src.to_path_buf()
+    // HTML files print as they are but locked down (relative images keep working through the
+    // base); everything else is wrapped first
+    let doc: Vec<u8> = if matches!(ext(src).as_str(), "html" | "htm") {
+        let base = src.parent().map(|d| format!("{}/", url(d))).unwrap_or_default();
+        let bytes = std::fs::read(src)?;
+        if std::str::from_utf8(&bytes).is_ok() || bytes.starts_with(&[0xFF, 0xFE]) {
+            // UTF-8 (or UTF-16, which read() turns into UTF-8): say so before anything else
+            let locked = lock_html(&read(src)?, &base);
+            let at = locked.to_ascii_lowercase().find("<meta http-equiv=\"content-security-policy\"").unwrap_or(0);
+            format!("{}<meta charset=\"utf-8\">{}", &locked[..at], &locked[at..]).into_bytes()
+        } else {
+            // an older character set (Windows-1252, Shift-JIS…): edit around the bytes without
+            // decoding them, so the page's own charset still reads them right
+            let latin: String = bytes.iter().map(|&b| b as char).collect();
+            lock_html_with(&latin, &base, true).chars().map(|c| u8::try_from(c as u32).unwrap_or(b'?')).collect()
+        }
     } else {
-        let tmp = temp_file("html");
-        std::fs::write(&tmp, to_html(src)?)?;
-        tmp
+        to_html(src)?.into_bytes()
     };
+    let html = temp_file("html");
+    std::fs::write(&html, doc)?;
     let out = out_path(src, None, "pdf");
+    // a profile of its own, kept between jobs (they run one at a time), so it starts quickly
     let profile = std::env::temp_dir().join("shiftdrop").join("edge");
     let mut cmd = Command::new(edge);
     // the page may be a stranger's HTML: with no network at all (no DNS, every request sent to
@@ -125,9 +204,7 @@ fn to_pdf(src: &Path) -> Result<PathBuf> {
         cmd.creation_flags(super::tools::CREATE_NO_WINDOW);
     }
     let r = super::tools::output_within(&mut cmd, std::time::Duration::from_secs(120));
-    if html != src {
-        let _ = std::fs::remove_file(&html);
-    }
+    let _ = std::fs::remove_file(&html);
     let status = r.context("Edge couldn't print the PDF")?.status;
     if !status.success() || !out.is_file() {
         bail!("Edge couldn't print the PDF");
@@ -148,11 +225,137 @@ fn url(p: &Path) -> String {
 }
 
 fn format_json(src: &Path, pretty: bool) -> Result<PathBuf> {
-    let v: serde_json::Value = serde_json::from_str(&read(src)?).context("not valid JSON")?;
-    let (suffix, text) = if pretty { ("Formatted", serde_json::to_string_pretty(&v)?) } else { ("Minified", serde_json::to_string(&v)?) };
+    let text = read(src)?;
+    serde_json::from_str::<serde::de::IgnoredAny>(&text).context("not valid JSON")?;
+    let (suffix, text) = (if pretty { "Formatted" } else { "Minified" }, reformat_json(&text, pretty));
     let out = out_path(src, Some(suffix), "json");
     std::fs::write(&out, text)?;
     Ok(out)
+}
+
+/// Re-spaces valid JSON without parsing it into values, so every number, escape and key order
+/// stays exactly as written (parsing would round numbers longer than 15–17 digits).
+fn reformat_json(text: &str, pretty: bool) -> String {
+    let mut out = String::with_capacity(text.len() + text.len() / 4);
+    let mut depth = 0usize;
+    let (mut in_str, mut escaped) = (false, false);
+    let mut chars = text.trim_start_matches('\u{feff}').chars().peekable();
+    let newline = |out: &mut String, depth: usize| {
+        out.push('\n');
+        out.push_str(&"  ".repeat(depth));
+    };
+    while let Some(c) = chars.next() {
+        if in_str {
+            out.push(c);
+            match c {
+                _ if escaped => escaped = false,
+                '\\' => escaped = true,
+                '"' => in_str = false,
+                _ => {}
+            }
+            continue;
+        }
+        match c {
+            '"' => {
+                in_str = true;
+                out.push(c);
+            }
+            c if c.is_whitespace() => {}
+            '{' | '[' => {
+                out.push(c);
+                // keep {} and [] on one line
+                while chars.peek().is_some_and(|n| n.is_whitespace()) {
+                    chars.next();
+                }
+                if let Some(close) = chars.next_if(|n| matches!(n, '}' | ']')) {
+                    out.push(close);
+                } else {
+                    depth += 1;
+                    if pretty {
+                        newline(&mut out, depth);
+                    }
+                }
+            }
+            '}' | ']' => {
+                depth = depth.saturating_sub(1);
+                if pretty {
+                    newline(&mut out, depth);
+                }
+                out.push(c);
+            }
+            ',' => {
+                out.push(c);
+                if pretty {
+                    newline(&mut out, depth);
+                }
+            }
+            ':' => out.push_str(if pretty { ": " } else { ":" }),
+            c => out.push(c),
+        }
+    }
+    if pretty {
+        out.push('\n');
+    }
+    out
+}
+
+/// Numbers that a 64-bit value can't hold exactly (long IDs, very precise decimals) become text
+/// with all their digits before parsing, instead of being silently rounded. Returns how many.
+fn keep_long_numbers(text: &str) -> (String, usize) {
+    let (mut out, mut count) = (String::with_capacity(text.len()), 0);
+    let (mut in_str, mut escaped) = (false, false);
+    let mut chars = text.char_indices().peekable();
+    while let Some((i, c)) = chars.next() {
+        if in_str {
+            match c {
+                _ if escaped => escaped = false,
+                '\\' => escaped = true,
+                '"' => in_str = false,
+                _ => {}
+            }
+            out.push(c);
+            continue;
+        }
+        if c == '"' {
+            in_str = true;
+            out.push(c);
+            continue;
+        }
+        if c == '-' || c.is_ascii_digit() {
+            let mut end = i + 1;
+            while let Some((j, _)) = chars.next_if(|&(_, n)| n.is_ascii_digit() || matches!(n, '.' | 'e' | 'E' | '+' | '-')) {
+                end = j + 1;
+            }
+            let num = &text[i..end];
+            let exact = if num.contains(['.', 'e', 'E']) {
+                // a decimal survives when the shortest form of the parsed double has the same digits
+                let digits = |s: &str| s.split(['e', 'E']).next().unwrap_or(s).chars().filter(char::is_ascii_digit).collect::<String>().trim_start_matches('0').trim_end_matches('0').to_string();
+                num.parse::<f64>().is_ok_and(|f| f.is_finite() && digits(&format!("{:e}", f.abs())) == digits(num))
+            } else {
+                num.parse::<i64>().is_ok() || num.parse::<u64>().is_ok()
+            };
+            if exact {
+                out.push_str(num);
+            } else {
+                count += 1;
+                out.push('"');
+                out.push_str(num);
+                out.push('"');
+            }
+            continue;
+        }
+        out.push(c);
+    }
+    (out, count)
+}
+
+fn parse_json(text: &str) -> Result<serde_json::Value> {
+    let (text, long) = keep_long_numbers(text);
+    let v = serde_json::from_str(&text).context("not valid JSON")?;
+    if long > 0 {
+        super::note(&format!("{long} long number{} kept as text so no digits were lost", if long == 1 { " was" } else { "s were" }));
+    }
+    Ok(v)
 }
 
 /// RFC 4180-style parsing: quoted fields may hold separators, quotes ("") and newlines.
@@ -199,7 +402,7 @@ fn csv_to_json(src: &Path) -> Result<PathBuf> {
 }
 
 fn json_to_csv(src: &Path) -> Result<PathBuf> {
-    let v: serde_json::Value = serde_json::from_str(&read(src)?).context("not valid JSON")?;
+    let v = parse_json(&read(src)?)?;
     let rows = v.as_array().context("CSV needs a JSON list of objects")?;
     let mut keys: Vec<String> = Vec::new();
     for r in rows {
@@ -230,9 +433,9 @@ fn json_to_csv(src: &Path) -> Result<PathBuf> {
 fn load_data(src: &Path) -> Result<serde_json::Value> {
     let text = read(src)?;
     Ok(match ext(src).as_str() {
-        "json" => serde_json::from_str(&text).context("not valid JSON")?,
+        "json" => parse_json(&text)?,
         "yaml" | "yml" => serde_yaml::from_str(&text).context("not valid YAML")?,
-        "toml" => serde_json::to_value(toml::from_str::<toml::Value>(&text).context("not valid TOML")?)?,
+        "toml" => toml_to_json(toml::from_str::<toml::Value>(&text).context("not valid TOML")?),
         "xml" => xml_to_value(&text)?,
         e => bail!("can't read .{e} as data"),
     })
@@ -255,6 +458,20 @@ fn data_to(src: &Path, to: &str) -> Result<PathBuf> {
     Ok(out)
 }
 
+/// TOML dates and times become plain text (serde would write them as a private wrapper object).
+pub(crate) fn toml_to_json(v: toml::Value) -> serde_json::Value {
+    use serde_json::Value;
+    match v {
+        toml::Value::String(s) => Value::String(s),
+        toml::Value::Integer(i) => Value::from(i),
+        toml::Value::Float(f) => serde_json::Number::from_f64(f).map_or(Value::Null, Value::Number),
+        toml::Value::Boolean(b) => Value::Bool(b),
+        toml::Value::Datetime(d) => Value::String(d.to_string()),
+        toml::Value::Array(a) => Value::Array(a.into_iter().map(toml_to_json).collect()),
+        toml::Value::Table(t) => Value::Object(t.into_iter().map(|(k, v)| (k, toml_to_json(v))).collect()),
+    }
+}
+
 /// TOML has no null.
 fn strip_nulls(v: serde_json::Value) -> serde_json::Value {
     use serde_json::Value;
@@ -266,7 +483,7 @@ fn strip_nulls(v: serde_json::Value) -> serde_json::Value {
 }
 
 /// XML → JSON the common way: attributes as "@name", text as "#text", repeated children as arrays.
-fn xml_to_value(text: &str) -> Result<serde_json::Value> {
+pub(crate) fn xml_to_value(text: &str) -> Result<serde_json::Value> {
     use quick_xml::events::Event;
     use serde_json::{Map, Value};
     fn push(m: &mut Map<String, Value>, k: String, v: Value) {
@@ -300,7 +517,13 @@ fn xml_to_value(text: &str) -> Result<serde_json::Value> {
     };
     loop {
         match r.read_event().context("not valid XML")? {
-            Event::Start(e) => stack.push((String::from_utf8_lossy(e.name().as_ref()).into_owned(), attrs(&e))),
+            Event::Start(e) => {
+                // each level is a step of recursion later on (writing JSON, dropping it)
+                if stack.len() > 100 {
+                    bail!("the XML is nested too deeply (over 100 levels)");
+                }
+                stack.push((String::from_utf8_lossy(e.name().as_ref()).into_owned(), attrs(&e)))
+            }
             Event::Empty(e) => {
                 let k = String::from_utf8_lossy(e.name().as_ref()).into_owned();
                 let v = finish(attrs(&e));
@@ -317,6 +540,7 @@ fn xml_to_value(text: &str) -> Result<serde_json::Value> {
                 let (k, m) = stack.pop().context("broken XML")?;
                 push(&mut stack.last_mut().context("broken XML")?.1, k, finish(m));
             }
+            Event::Eof if stack.len() > 1 => bail!("the XML file is cut off (a tag is never closed)"),
             Event::Eof => break,
             _ => {}
         }

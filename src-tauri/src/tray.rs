@@ -2,7 +2,7 @@ use crate::settings::{self, ACCENTS, THEMES};
 use tauri::{
     menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu},
     tray::TrayIconBuilder,
-    AppHandle, Wry,
+    AppHandle, Listener, Wry,
 };
 use tauri_plugin_autostart::ManagerExt;
 
@@ -50,16 +50,23 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
                     app.exit(0)
                 }
                 "open" => {
-                    let _ = crate::windows::open_hub_now(app.clone(), vec![], "actions".into(), None);
+                    let app = app.clone();
+                    // building a window inside a menu event can deadlock on Windows
+                    std::thread::spawn(move || crate::windows::open_hub_now(app, vec![], "actions".into(), None));
                 }
                 "activity" => {
-                    let _ = crate::windows::open_hub_now(app.clone(), vec![], "activity".into(), None);
+                    let app = app.clone();
+                    // building a window inside a menu event can deadlock on Windows
+                    std::thread::spawn(move || crate::windows::open_hub_now(app, vec![], "activity".into(), None));
                 }
                 "welcome" => {
-                    let _ = crate::windows::open_hub_now(app.clone(), vec![], "welcome".into(), None);
+                    let app = app.clone();
+                    // building a window inside a menu event can deadlock on Windows
+                    std::thread::spawn(move || crate::windows::open_hub_now(app, vec![], "welcome".into(), None));
                 }
                 "shelf" => {
-                    let _ = crate::windows::shelf_add_now(app.clone(), vec![]);
+                    let app = app.clone();
+                    std::thread::spawn(move || crate::windows::shelf_add_now(app, vec![]));
                 }
                 "enabled" => settings::update(app, |s| s.enabled = !s.enabled),
                 "explorer_only" => settings::update(app, |s| s.explorer_only = !s.explorer_only),
@@ -81,5 +88,12 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
             }
         })
         .build(app)?;
+    // settings changed in the hub: keep the tray's check marks in step
+    let handle = app.clone();
+    app.listen_any("settings", move |_| {
+        if let (Some(tray), Ok(menu)) = (handle.tray_by_id("main"), build_menu(&handle)) {
+            let _ = tray.set_menu(Some(menu));
+        }
+    });
     Ok(())
 }

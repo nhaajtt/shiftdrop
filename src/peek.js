@@ -2,6 +2,7 @@ import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { extOf, kindOf } from './menu.js';
+import { t } from './i18n.js';
 import { initTheme } from './theme.js';
 
 initTheme();
@@ -14,6 +15,17 @@ const size = (n) => (n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1
 
 // arrowing through files quickly: only the newest preview may draw
 let shown = 0;
+
+function infoPanel(info, p) {
+  const dl = el('dl', { className: 'info' });
+  const row = (k, v) => v && dl.append(el('dt', { textContent: t(k) }), el('dd', { textContent: v }));
+  row('Kind', info?.is_dir ? t('Folder') : info?.real_type || extOf(p).toUpperCase() || t('File'));
+  row('Size', info && !info.is_dir ? size(info.size) : '');
+  row('Items', info?.is_dir ? String(info.items) : '');
+  row('Modified', info ? new Date(info.modified * 1000).toLocaleString() : '');
+  row('Path', p);
+  return dl;
+}
 
 async function show(p) {
   const my = ++shown;
@@ -28,15 +40,17 @@ async function show(p) {
   const k = info?.is_dir ? 'folder' : kindOf(p);
   if (info?.warning) view.append(el('p', { className: 'warn', textContent: `⚠ ${info.warning}` }));
   if (k === 'image' && !['heic', 'heif', 'dng', 'cr2', 'cr3', 'nef', 'arw', 'orf', 'rw2', 'raf', 'jxr'].includes(extOf(p))) {
-    view.append(el('img', { src, alt: '' }));
+    // a picture or video the webview can't decode falls back to the info panel
+    const fallback = () => my === shown && view.replaceChildren(infoPanel(info, p));
+    view.append(el('img', { src, alt: '', onerror: fallback }));
   } else if (k === 'video') {
-    view.append(el('video', { src, controls: true, autoplay: true }));
+    view.append(el('video', { src, controls: true, autoplay: true, onerror: () => my === shown && view.replaceChildren(infoPanel(info, p)) }));
   } else if (k === 'audio') {
-    view.append(el('audio', { src, controls: true, autoplay: true }));
+    view.append(el('audio', { src, controls: true, autoplay: true, onerror: () => my === shown && view.replaceChildren(infoPanel(info, p)) }));
   } else if (k === 'pdf') {
     const box = el('div', { className: 'pages', textContent: 'Loading pages…' });
     view.append(box);
-    invoke('pdf_thumbs', { path: p, width: 900 })
+    invoke('pdf_thumbs', { path: p, width: 900, limit: 12 })
       .then((pages) => my === shown && box.replaceChildren(...pages.map((s) => el('img', { src: s, alt: '' }))))
       .catch((e) => my === shown && (box.textContent = `Can't show this PDF: ${e}`));
   } else if (k === 'text' || (info && info.size < 2_000_000 && !info.real_type && !info.is_dir)) {
@@ -44,14 +58,7 @@ async function show(p) {
     if (my !== shown) return;
     view.append(el('pre', { textContent: text + (info?.size > 262144 ? '\n…' : '') }));
   } else {
-    const dl = el('dl', { className: 'info' });
-    const row = (k, v) => v && dl.append(el('dt', { textContent: k }), el('dd', { textContent: v }));
-    row('Kind', info?.is_dir ? 'Folder' : info?.real_type || extOf(p).toUpperCase() || 'File');
-    row('Size', info && !info.is_dir ? size(info.size) : '');
-    row('Items', info?.is_dir ? String(info.items) : '');
-    row('Modified', info ? new Date(info.modified * 1000).toLocaleString() : '');
-    row('Path', p);
-    view.append(dl);
+    view.append(infoPanel(info, p));
   }
 }
 

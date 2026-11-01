@@ -52,6 +52,16 @@ const RULES = [
   [/os error 112|not enough space|no space/i, () => ({ why: 'The disk is full.', how: 'Free some space, then try again.' })],
   [/file not found|os error 2\b|cannot find the file/i, () => ({ why: 'The file was moved or deleted before the action ran.', how: 'Drag it again from where it is now.' })],
   [/download failed|didn't answer|GitHub didn't answer/i, () => ({ why: 'The download didn’t complete.', how: 'Check the internet connection (and VPN), then try again.' })],
+  [/couldn't get it under/i, () => ({ why: 'Even at the lowest quality it stayed above the size you asked for.', how: 'Pick a bigger size, or trim the file first.' })],
+  [/start is past the end|nothing to keep/i, () => ({ why: 'The start time is after the end of the file.', how: 'Pick a start time inside the clip.' })],
+  [/no frames came out/i, () => ({ why: 'No frames could be taken from this video.', how: 'It may be damaged or very short. Open it in a player to check.' })],
+  [/too big for this|too much text to copy|over 100 megapixels|wider or taller than/i, () => ({ why: 'The file or picture is too big for this action.', how: 'Make it smaller first (Resize or Compress), or split it.' })],
+  [/XML file is cut off|nested too deeply/i, () => ({ why: 'The XML file is incomplete or unusually deep, so it can’t be converted safely.', how: 'Open it in an editor to check that it is complete.' })],
+  [/private local network/i, () => ({ why: 'This PC isn’t on a private Wi-Fi or home network right now (a VPN or public network is in the way), so the phone link wasn’t opened.', how: 'Join the same Wi-Fi as the phone, or turn off the VPN, then try again.' })],
+  [/took too long to read this picture/i, () => ({ why: 'Windows took too long to open this picture.', how: 'If it is in OneDrive, make it available offline first, then try again.' })],
+  [/settings file was busy/i, () => ({ why: 'The settings file was busy when ShiftDrop started, so changes can’t be saved right now.', how: 'Quit ShiftDrop from the tray and open it again.' })],
+  [/couldn't protect the key/i, () => ({ why: 'Windows couldn’t protect the key, so it wasn’t saved.', how: 'Try again; if it keeps failing, restart Windows.' })],
+  [/none of these could be uploaded/i, () => ({ why: 'Only files can be uploaded, and none were selected.', how: 'Select files (not folders), then try again.' })],
 ];
 
 export function fixFor(error) {

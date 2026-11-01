@@ -45,8 +45,10 @@ pub fn run(src: &Path, action: &Action, progress: Progress) -> Result<Vec<PathBu
             for (i, mut page) in doc.pages().iter().enumerate() {
                 let label = format!("{} / {n}", i + 1);
                 let size = 10.0;
-                let x = page.width().value / 2.0 - label.len() as f32 * size * 0.25;
-                page.objects_mut().create_text_object(PdfPoints::new(x), PdfPoints::new(22.0), label, font, PdfPoints::new(size))?;
+                let f = Frame::of(&page);
+                let t = PdfPageTextObject::new(&doc, &label, font, PdfPoints::new(size))?;
+                let t = f.place(t.into(), f.w_shown() / 2.0 - label.len() as f32 * size * 0.25, 22.0, 0.0)?;
+                page.objects_mut().add_object(t)?;
                 progress((i + 1) as f32 / n as f32);
             }
             save(&doc, src, "Numbered")?
@@ -55,15 +57,14 @@ pub fn run(src: &Path, action: &Action, progress: Progress) -> Result<Vec<PathBu
             let font = unicode_font(&mut doc)?;
             let n = doc.pages().len();
             for (i, mut page) in doc.pages().iter().enumerate() {
-                let (w, h) = (page.width().value, page.height().value);
-                let size = (w.min(h) / 9.0).max(18.0);
+                let f = Frame::of(&page);
+                let size = (f.w.min(f.h) / 9.0).max(18.0);
                 let mut t = PdfPageTextObject::new(&doc, text, font, PdfPoints::new(size))?;
                 t.set_fill_color(PdfColor::new(120, 120, 140, 70))?;
                 let tw = text.chars().count() as f32 * size * 0.55;
                 t.translate(PdfPoints::new(-tw / 2.0), PdfPoints::new(-size / 3.0))?;
-                t.rotate_counter_clockwise_degrees(35.0)?;
-                t.translate(PdfPoints::new(w / 2.0), PdfPoints::new(h / 2.0))?;
-                page.objects_mut().add_text_object(t)?;
+                let t = f.place(t.into(), f.w_shown() / 2.0, f.h_shown() / 2.0, 35.0)?;
+                page.objects_mut().add_object(t)?;
                 progress((i + 1) as f32 / n as f32);
             }
             save(&doc, src, "Watermarked")?
@@ -72,11 +73,14 @@ pub fn run(src: &Path, action: &Action, progress: Progress) -> Result<Vec<PathBu
             let data = base64::engine::general_purpose::STANDARD.decode(png.trim_start_matches("data:image/png;base64,"))?;
             let stamp = image::load_from_memory(&data)?;
             let mut p = doc.pages().get(*page as _).context("no such page")?;
-            let (w, h) = (p.width().value, p.height().value);
-            // rect is [x, y, w, h] as fractions from the top-left; PDF counts from the bottom
+            let f = Frame::of(&p);
+            let (w, h) = (f.w_shown(), f.h_shown());
+            // rect is [x, y, w, h] as fractions from the top-left of the page as shown; PDF counts from the bottom
             let (sw, sh) = (rect[2] as f32 * w, rect[3] as f32 * h);
             let (x, y) = (rect[0] as f32 * w, h - rect[1] as f32 * h - sh);
-            p.objects_mut().create_image_object(PdfPoints::new(x), PdfPoints::new(y), &stamp, Some(PdfPoints::new(sw)), Some(PdfPoints::new(sh)))?;
+            let im = PdfPageImageObject::new_with_size(&doc, &stamp, PdfPoints::new(sw), PdfPoints::new(sh))?;
+            let im = f.place(im.into(), x, y, 0.0)?;
+            p.objects_mut().add_object(im)?;
             drop(p);
             save(&doc, src, "Signed")?
         }
@@ -116,16 +120,16 @@ pub fn run(src: &Path, action: &Action, progress: Progress) -> Result<Vec<PathBu
             let n = doc.pages().len() as usize;
             for (i, page) in doc.pages().iter().enumerate() {
                 for obj in page.objects().iter() {
-                    if let Some(im) = obj.as_image_object() {
+                    each_image(&obj, 0, &mut |im| {
                         if let Ok(raw) = im.get_raw_image() {
-                            if raw.width() < 24 || raw.height() < 24 {
-                                continue;
+                            if raw.width() >= 24 && raw.height() >= 24 {
+                                count += 1;
+                                let out = unique(&dir, &format!("p{:02} image {count:02}", i + 1), "png");
+                                raw.save(out)?;
                             }
-                            count += 1;
-                            let out = unique(&dir, &format!("p{:02} image {count:02}", i + 1), "png");
-                            raw.save(out)?;
                         }
-                    }
+                        Ok(())
+                    })?;
                 }
                 progress((i + 1) as f32 / n as f32);
             }
@@ -141,10 +145,84 @@ pub fn run(src: &Path, action: &Action, progress: Progress) -> Result<Vec<PathBu
     Ok(vec![out])
 }
 
+/// Pictures are often wrapped in form objects (reusable groups of content), so those are opened too.
+fn each_image<F: FnMut(&PdfPageImageObject) -> Result<()>>(obj: &PdfPageObject, depth: u32, f: &mut F) -> Result<()> {
+    if let Some(im) = obj.as_image_object() {
+        f(im)?;
+    } else if let Some(form) = obj.as_x_object_form_object() {
+        // forms can nest (or loop in a broken file): stop somewhere sensible
+        if depth < 16 {
+            for k in 0..form.len() {
+                if let Ok(child) = form.get(k) {
+                    each_image(&child, depth + 1, f)?;
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 fn save(doc: &PdfDocument, src: &Path, suffix: &str) -> Result<PathBuf> {
     let out = out_path(src, Some(suffix), "pdf");
     doc.save_to_file(&out)?;
     Ok(out)
+}
+
+/// A page as it is shown. Pages can carry a /Rotate and a crop box that doesn't start at 0,0,
+/// while objects are placed in the unrotated page space: this maps one onto the other.
+struct Frame {
+    rot: u32,
+    left: f32,
+    bottom: f32,
+    /// unrotated size of the visible box
+    w: f32,
+    h: f32,
+}
+
+impl Frame {
+    fn of(page: &PdfPage) -> Frame {
+        // the visible box (crop within media), also when the page inherits it from its parent
+        let b = page.boundaries();
+        let r = b.bounding().or_else(|_| b.crop()).or_else(|_| b.media()).map(|x| x.bounds).unwrap_or_else(|_| {
+            // page.width/height are already turned by /Rotate
+            let (w, h) = (page.width().value, page.height().value);
+            let rot = rotation_deg(page.rotation().unwrap_or(PdfPageRenderRotation::None));
+            if rot % 180 == 90 { PdfRect::new_from_values(0.0, 0.0, w, h) } else { PdfRect::new_from_values(0.0, 0.0, h, w) }
+        });
+        let rot = rotation_deg(page.rotation().unwrap_or(PdfPageRenderRotation::None));
+        Frame { rot, left: r.left().value, bottom: r.bottom().value, w: r.width().value, h: r.height().value }
+    }
+
+    fn w_shown(&self) -> f32 {
+        if self.rot % 180 == 90 { self.h } else { self.w }
+    }
+
+    fn h_shown(&self) -> f32 {
+        if self.rot % 180 == 90 { self.w } else { self.h }
+    }
+
+    /// Page space point for (x, y) measured from the bottom-left of the page as shown.
+    fn point(&self, x: f32, y: f32) -> (f32, f32) {
+        let (u, v) = match self.rot {
+            90 => (self.w - y, x),
+            180 => (self.w - x, self.h - y),
+            270 => (y, self.h - x),
+            _ => (x, y),
+        };
+        (self.left + u, self.bottom + v)
+    }
+
+    /// Puts an object built upright at the origin at (x, y) on the page as shown, turned `deg`
+    /// counter-clockwise as seen, so it reads the right way up on a rotated page too.
+    fn place<'a>(&self, mut obj: PdfPageObject<'a>, x: f32, y: f32, deg: f32) -> Result<PdfPageObject<'a>> {
+        let turn = deg + self.rot as f32;
+        if turn != 0.0 {
+            obj.rotate_counter_clockwise_degrees(turn)?;
+        }
+        let (px, py) = self.point(x, y);
+        obj.translate(PdfPoints::new(px), PdfPoints::new(py))?;
+        Ok(obj)
+    }
 }
 
 fn rotation(deg: u32) -> PdfPageRenderRotation {

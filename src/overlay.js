@@ -106,7 +106,7 @@ function render() {
 }
 
 function showRing2(i) {
-  if (parent === i) return;
+  if (!menu || parent === i) return;
   ring2?.remove();
   ring2 = null;
   parent = i;
@@ -147,6 +147,7 @@ function hitTest(x, y) {
 }
 
 function setHot(h) {
+  if (!menu && h?.ring > 0) h = null;
   if (JSON.stringify(h) === JSON.stringify(hot)) return;
   hot = h;
   coreEl?.classList.toggle('hot', h?.ring === 0);
@@ -156,7 +157,7 @@ function setHot(h) {
     path.classList.toggle('parent', h?.ring === 2 && h.i === i);
     g.classList.toggle('hot-label', on || (h?.ring === 2 && h.i === i));
   });
-  if (h?.ring === 1) showRing2(menu.items[h.i].sub ? h.i : -1);
+  if (h?.ring === 1) showRing2(menu.items[h.i]?.sub ? h.i : -1);
   if (h?.ring === 0 && parent >= 0) showRing2(-1);
   if (ring2) {
     [...ring2.querySelectorAll(':scope > g')].forEach((g, j) => {
@@ -218,6 +219,7 @@ listen('overlay:show', ({ payload }) => {
   }
   svg.classList.remove('open');
   glass.classList.remove('open');
+  pending = null; // a move queued for the last wheel must not stall this one
   paths = payload.paths || [];
   locked = false;
   warnings = payload.warnings || [];
@@ -268,7 +270,11 @@ listen('overlay:key', ({ payload: n }) => {
 let pending = null;
 listen('overlay:move', ({ payload: [x, y] }) => {
   if (!svg.childElementCount) return;
-  if (!pending) requestAnimationFrame(() => (pending && hover(pending), (pending = null)));
+  if (!pending) requestAnimationFrame(() => {
+    const p = pending;
+    pending = null; // cleared first: a throw in hover must not leave moves blocked
+    if (p) hover(p);
+  });
   pending = { x, y };
 });
 

@@ -96,8 +96,74 @@ pub fn kill_tree(pid: u32) {
     let _ = quiet(Path::new("taskkill")).args(["/F", "/T", "/PID", &pid.to_string()]).output();
 }
 
+/// The job our helper programs run in. The handle is never closed: Windows closes it when this
+/// process ends, which ends the job.
+#[cfg(windows)]
+static JOB: OnceLock<usize> = OnceLock::new();
+
+/// Set once the app starts quitting: no new helper program may outlive it.
+static QUITTING: AtomicBool = AtomicBool::new(false);
+
+pub fn quitting() -> bool {
+    QUITTING.load(Ordering::SeqCst)
+}
+
+/// Stops every helper program still running (the app is quitting).
+pub fn end_all() {
+    QUITTING.store(true, Ordering::SeqCst);
+    #[cfg(windows)]
+    if let Some(&job) = JOB.get().filter(|&&j| j != 0) {
+        use windows_sys::Win32::System::JobObjects::TerminateJobObject;
+        unsafe { TerminateJobObject(job as _, 1) };
+    }
+}
+
+/// Puts a program we started into a job that Windows ends together with ShiftDrop, so quitting
+/// the app (or a crash) never leaves ffmpeg, LibreOffice or a download running on its own.
+/// Programs it starts later belong to the same job.
+pub fn adopt(pid: u32) {
+    #[cfg(windows)]
+    unsafe {
+        use windows_sys::Win32::{
+            Foundation::{CloseHandle, HANDLE},
+            System::{
+                JobObjects::{AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation, SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE},
+                Threading::{OpenProcess, TerminateProcess, PROCESS_SET_QUOTA, PROCESS_TERMINATE},
+            },
+        };
+        let job = *JOB.get_or_init(|| {
+            let j = CreateJobObjectW(std::ptr::null(), std::ptr::null());
+            if j.is_null() {
+                return 0;
+            }
+            let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
+            info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+            let ok = SetInformationJobObject(j, JobObjectExtendedLimitInformation, &info as *const _ as *const _, std::mem::size_of_val(&info) as u32);
+            if ok == 0 {
+                CloseHandle(j);
+                return 0;
+            }
+            j as usize
+        });
+        if job == 0 {
+            return;
+        }
+        let p = OpenProcess(PROCESS_SET_QUOTA | PROCESS_TERMINATE, 0, pid);
+        if !p.is_null() {
+            AssignProcessToJobObject(job as HANDLE, p);
+            // started while the app was already quitting: the job was emptied before it existed
+            if quitting() {
+                TerminateProcess(p, 1);
+            }
+            CloseHandle(p);
+        }
+    }
+    #[cfg(not(windows))]
+    let _ = pid;
+}
+
 /// Stops a program that has gone quiet for `idle` (stuck on a hidden dialog, a damaged file…).
-/// `touch()` marks progress; dropping the guard stops watching.
+/// `touch()` marks progress; dropping the guard stops watching. The program also ends with the app.
 pub struct Watchdog {
     done: Arc<AtomicBool>,
     fired: Arc<AtomicBool>,
@@ -107,6 +173,12 @@ pub struct Watchdog {
 
 impl Watchdog {
     pub fn new(pid: u32, idle: Duration) -> Self {
+        adopt(pid);
+        Self::watch(pid, idle)
+    }
+
+    /// Only the time limit: the program (and whatever it opens) may keep running after the app quits.
+    pub fn watch(pid: u32, idle: Duration) -> Self {
         let (done, fired, last, start) = (Arc::new(AtomicBool::new(false)), Arc::new(AtomicBool::new(false)), Arc::new(AtomicU64::new(0)), Instant::now());
         let (d, f, l) = (done.clone(), fired.clone(), last.clone());
         std::thread::spawn(move || {
@@ -138,10 +210,20 @@ impl Drop for Watchdog {
     }
 }
 
-/// Like `Command::output`, but the program is stopped after `limit`.
+/// Like `Command::output`, but the program is stopped after `limit`, and when the app quits.
 pub fn output_within(cmd: &mut Command, limit: Duration) -> Result<Output> {
+    run_within(cmd, limit, true)
+}
+
+/// The same for the user's own commands: apps they open (an editor, Photoshop) stay open when
+/// ShiftDrop quits.
+pub fn output_within_unowned(cmd: &mut Command, limit: Duration) -> Result<Output> {
+    run_within(cmd, limit, false)
+}
+
+fn run_within(cmd: &mut Command, limit: Duration, own: bool) -> Result<Output> {
     let child = cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
-    let dog = Watchdog::new(child.id(), limit);
+    let dog = if own { Watchdog::new(child.id(), limit) } else { Watchdog::watch(child.id(), limit) };
     let out = child.wait_with_output()?;
     if dog.fired() {
         bail!("it took longer than {} and was stopped", human(limit));

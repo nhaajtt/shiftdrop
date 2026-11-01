@@ -1,0 +1,13 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "editor-commands",
+  "description": "Crop, background, trim, pages, sign…: previews and runs the edit.",
+  "windows": [
+    "editor-*"
+  ],
+  "permissions": [
+    "allow-get-settings",
+    "allow-pdf-thumbs",
+    "allow-run-action"
+  ]
+}

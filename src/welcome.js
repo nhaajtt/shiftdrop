@@ -37,7 +37,7 @@ addView({
     const setup = h('div', { class: 'card glass' });
     const lang = h(
       'select',
-      { onchange: (e) => settings.set({ lang: e.target.value }).then(() => location.reload()) },
+      { onchange: (e) => settings.set({ lang: e.target.value }).then(() => location.reload(), (x) => invoke('ui_log', { msg: `setting failed: ${x}` })) },
       [['system', 'system'], ['en', 'English'], ['vi', 'Tiếng Việt']].map(([v, l]) => h('option', { value: v, selected: (s.lang || 'system') === v, translate: 'no' }, l)),
     );
     setup.append(

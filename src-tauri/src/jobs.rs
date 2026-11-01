@@ -64,15 +64,32 @@ fn with_history<T>(app: &AppHandle, f: impl FnOnce(&mut Vec<Record>) -> T) -> T 
     f(list)
 }
 
-fn remember(app: &AppHandle, r: Record) {
+fn remember(app: &AppHandle, mut r: Record) {
+    // a batch of thousands of files mustn't make the history huge to load and send to the windows
+    if r.files.len() > 1000 {
+        let n = r.files.len();
+        let cut = format!("only the first 1000 of {n} files are kept here (Try again uses those)");
+        r.note = Some(r.note.map_or(cut.clone(), |x| format!("{x}\n{cut}")));
+    }
+    r.files.truncate(1000);
+    r.outputs.truncate(1000);
+    if let Some(e) = r.error.as_mut().filter(|e| e.chars().count() > 4000) {
+        *e = e.chars().take(4000).collect::<String>() + "…";
+    }
     let snapshot = with_history(app, |list| {
         list.insert(0, r);
         list.truncate(KEEP);
         serde_json::to_string(list).unwrap_or_default()
     });
     if let Some(p) = history_file(app) {
-        let _ = std::fs::create_dir_all(p.parent().unwrap());
-        let _ = std::fs::write(p, snapshot);
+        if let Some(dir) = p.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        // a new file swapped in, so a crash mid-write doesn't lose the whole history
+        let tmp = p.with_extension("json.tmp");
+        if std::fs::write(&tmp, snapshot).and_then(|_| std::fs::rename(&tmp, &p)).is_err() {
+            crate::log("history: could not save");
+        }
     }
     let _ = app.emit("history", ());
 }
@@ -170,6 +187,10 @@ fn run(app: &AppHandle, job: Job) {
     emit("running", 0, 0.0, &[], None, None);
     engines::take_notes();
     for (i, unit) in units.iter().enumerate() {
+        // quitting: the rest of the batch isn't started
+        if engines::tools::quitting() {
+            break;
+        }
         let progress = |p: f32| emit("running", i, (i as f32 + p) / total as f32, &[], None, None);
         crate::naming::begin();
         match engines::run(unit, &job.action, &progress) {

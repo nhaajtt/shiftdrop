@@ -58,6 +58,7 @@ const VI = {
   "Failed": "Lỗi",
   "Partly failed": "Lỗi một phần",
   "Try again": "Thử lại",
+  "Password again": "Nhập lại mật khẩu",
   "Details": "Chi tiết",
   "Clear list": "Xoá danh sách",
   "just now": "vừa xong",
@@ -108,6 +109,26 @@ const VI = {
   "Free some space, then try again.": "Giải phóng bớt dung lượng rồi thử lại.",
   "The file was moved or deleted before the action ran.": "File đã bị chuyển đi hoặc xoá trước khi thao tác chạy.",
   "Drag it again from where it is now.": "Kéo lại file từ vị trí hiện tại.",
+  "Even at the lowest quality it stayed above the size you asked for.": "Dù đã giảm chất lượng tối đa, file vẫn lớn hơn dung lượng bạn chọn.",
+  "Pick a bigger size, or trim the file first.": "Chọn dung lượng lớn hơn, hoặc cắt bớt file trước.",
+  "The start time is after the end of the file.": "Thời điểm bắt đầu nằm sau khi file đã kết thúc.",
+  "Pick a start time inside the clip.": "Chọn thời điểm bắt đầu nằm trong đoạn video.",
+  "No frames could be taken from this video.": "Không lấy được khung hình nào từ video này.",
+  "It may be damaged or very short. Open it in a player to check.": "Có thể file bị hỏng hoặc quá ngắn. Mở bằng trình phát để kiểm tra.",
+  "The file or picture is too big for this action.": "File hoặc ảnh quá lớn cho thao tác này.",
+  "Make it smaller first (Resize or Compress), or split it.": "Thu nhỏ trước (Đổi cỡ hoặc Nén), hoặc chia nhỏ ra.",
+  "The XML file is incomplete or unusually deep, so it can’t be converted safely.": "File XML bị thiếu hoặc lồng quá sâu, nên không chuyển đổi an toàn được.",
+  "Open it in an editor to check that it is complete.": "Mở bằng trình soạn thảo để xem file có đầy đủ không.",
+  "This PC isn’t on a private Wi-Fi or home network right now (a VPN or public network is in the way), so the phone link wasn’t opened.": "Máy tính đang không ở trong Wi-Fi riêng hay mạng gia đình (có VPN hoặc mạng công cộng chen vào), nên link cho điện thoại chưa được mở.",
+  "Join the same Wi-Fi as the phone, or turn off the VPN, then try again.": "Kết nối cùng Wi-Fi với điện thoại, hoặc tắt VPN, rồi thử lại.",
+  "Windows took too long to open this picture.": "Windows mất quá lâu để mở ảnh này.",
+  "If it is in OneDrive, make it available offline first, then try again.": "Nếu ảnh nằm trên OneDrive, hãy chọn “Luôn giữ trên máy” trước rồi thử lại.",
+  "The settings file was busy when ShiftDrop started, so changes can’t be saved right now.": "Lúc ShiftDrop khởi động, file cài đặt đang bị chương trình khác giữ, nên giờ chưa lưu được thay đổi.",
+  "Quit ShiftDrop from the tray and open it again.": "Thoát ShiftDrop ở khay hệ thống rồi mở lại.",
+  "Windows couldn’t protect the key, so it wasn’t saved.": "Windows không mã hoá được khoá này, nên khoá chưa được lưu.",
+  "Try again; if it keeps failing, restart Windows.": "Thử lại; nếu vẫn lỗi, hãy khởi động lại Windows.",
+  "Only files can be uploaded, and none were selected.": "Chỉ tải lên được file, mà chưa có file nào được chọn.",
+  "Select files (not folders), then try again.": "Chọn file (không phải thư mục) rồi thử lại.",
   "The download didn’t complete.": "Tải về không thành công.",
   "Check the internet connection (and VPN), then try again.": "Kiểm tra kết nối mạng (và VPN) rồi thử lại.",
   "Something went wrong that ShiftDrop doesn’t recognise.": "Có lỗi mà ShiftDrop chưa nhận ra.",
@@ -189,6 +210,41 @@ const VI = {
   'None of the pictures could be read.': 'Không đọc được ảnh nào.', 'Check that they are real image files.': 'Kiểm tra xem chúng có đúng là file ảnh không.',
   'ShiftDrop hit an internal error on this file. Nothing was changed.': 'ShiftDrop gặp lỗi nội bộ với file này. Không có gì bị thay đổi.',
   'Please report it so it can be fixed: the details are filled in for you.': 'Hãy báo lỗi để được sửa: thông tin đã được điền sẵn.',
+  // added with the review fixes
+  Aspect: 'Tỉ lệ', 'Select all': 'Chọn tất cả', Selection: 'Vùng chọn', Padding: 'Lề', 'Corner radius': 'Bo góc', Shadow: 'Đổ bóng',
+  Areas: 'Vùng che', Place: 'Vị trí', Order: 'Thứ tự', Length: 'Độ dài', End: 'Kết thúc', Edit: 'Chỉnh sửa', Start: 'Bắt đầu',
+  Size: 'Kích thước', Background: 'Nền', Free: 'Tự do', 'Move left': 'Dời sang trái', 'Move right': 'Dời sang phải', Remove: 'Bỏ',
+  'The file is still loading.': 'File vẫn đang tải.', 'Draw at least one area first.': 'Hãy vẽ ít nhất một vùng trước.',
+  'Keep at least one page.': 'Giữ lại ít nhất một trang.', 'Drag a box on the page to place it.': 'Hãy kéo một khung trên trang để đặt chữ ký.',
+  "This file can't be previewed here, so it can't be edited in this window.": 'Không xem trước được file này ở đây nên không sửa được trong cửa sổ này.',
+  'Use a time like 1:05 or 0:05.5.': 'Nhập thời gian dạng 1:05 hoặc 0:05.5.', 'Start must be before the end.': 'Điểm bắt đầu phải trước điểm kết thúc.',
+  'End must be after the start.': 'Điểm kết thúc phải sau điểm bắt đầu.',
+  Kind: 'Loại', Modified: 'Sửa lần cuối', Items: 'Số mục', Folder: 'Thư mục', File: 'File',
+  'Open ShiftDrop': 'Mở ShiftDrop', 'Next:': 'Tiếp theo:', Reset: 'Đặt lại', Shelf: 'Kệ tạm',
+  'Hide (files stay)': 'Ẩn (file vẫn còn trên kệ)', 'Drag every file out at once': 'Kéo tất cả file ra cùng lúc',
+  'Drag the result into another app': 'Kéo kết quả sang app khác', 'Move the new files to the Recycle Bin': 'Chuyển file mới vào Thùng rác',
+  'Report this problem on GitHub': 'Báo lỗi này trên GitHub', 'Copying path': 'Đang chép đường dẫn', 'Copying text': 'Đang chép chữ',
+  // wheel tabs, rename cases, recipe kinds
+  image: 'ảnh', video: 'video', audio: 'âm thanh', pdf: 'PDF', text: 'văn bản', office: 'Office', exe: 'chương trình', archive: 'file nén',
+  other: 'khác', mixed: 'hỗn hợp', any: 'bất kỳ', keep: 'giữ nguyên', lower: 'chữ thường', upper: 'CHỮ HOA', title: 'Viết Hoa Đầu Từ',
+  // welcome
+  'Start dragging a file': 'Bắt đầu kéo một file', 'In File Explorer or on the desktop.': 'Trong File Explorer hoặc trên desktop.',
+  'Then hold Shift': 'Sau đó giữ Shift', 'The wheel opens around the file. Keys 1–8 pick a wedge, Esc cancels.': 'Vòng thao tác mở quanh file. Phím 1–8 chọn một ô, Esc để huỷ.',
+  'Drop it on an action': 'Thả vào một thao tác', 'The result is saved next to the original, which is never changed.': 'Kết quả được lưu cạnh bản gốc, bản gốc không bao giờ bị đổi.',
+  // settings
+  ready: 'sẵn sàng', off: 'tắt', 'Windows Sandbox': 'Windows Sandbox', 'Downloaded from its official GitHub release.': 'Tải từ bản phát hành GitHub chính thức.',
+  'Available: programs can be opened in a throwaway sandbox.': 'Có sẵn: có thể mở chương trình trong sandbox dùng một lần.',
+  'Not available on this PC (needs Windows Pro or Enterprise with the feature turned on).': 'Không dùng được trên máy này (cần Windows Pro hoặc Enterprise và đã bật tính năng).',
+  'What a program can do (Mandiant)': 'Chương trình có thể làm gì (Mandiant)', 'Strings hidden or built at run time (Mandiant)': 'Chuỗi bị giấu hoặc tạo lúc chạy (Mandiant)',
+  'Unpacks programs compressed with UPX': 'Giải nén chương trình được nén bằng UPX', 'Background removal and face blurring, on this PC (≈180 MB)': 'Xoá nền và làm mờ mặt ngay trên máy này (≈180 MB)',
+  'Real-ESRGAN, sharp 2× and 4× enlargements; needs a Vulkan graphics card (≈45 MB)': 'Real-ESRGAN, phóng to 2× và 4× sắc nét; cần card đồ hoạ Vulkan (≈45 MB)',
+  'Needed for every video and audio action (official Windows build, ≈90 MB)': 'Cần cho mọi thao tác video và âm thanh (bản Windows chính thức, ≈90 MB)',
+  'Scan programs with your own YARA rules (VirusTotal’s YARA-X)': 'Quét chương trình bằng luật YARA của bạn (YARA-X của VirusTotal)',
+  'PDF passwords: protect and unlock': 'Mật khẩu PDF: đặt và mở khoá', 'Subtitles from speech, offline (whisper.cpp + 150 MB model)': 'Phụ đề từ giọng nói, chạy offline (whisper.cpp + model 150 MB)',
+  'Claude API key': 'Khoá API Claude', 'For Translate and Summarize on text files.': 'Dùng cho Dịch và Tóm tắt file văn bản.',
+  'R2 account ID': 'Account ID của R2', 'R2 bucket': 'Bucket R2', 'R2 access key ID': 'Access key ID của R2',
+  'A token limited to this one bucket is enough.': 'Chỉ cần token giới hạn cho đúng bucket này.', 'R2 secret': 'Secret của R2',
+  'Public URL': 'URL công khai', 'The bucket’s r2.dev address or your own domain.': 'Địa chỉ r2.dev của bucket hoặc tên miền riêng của bạn.',
 };
 
 // Titles with numbers or names in them.
@@ -208,7 +264,8 @@ const RULES = [
   [/^Changing speed to (.+)$/, 'Đang đổi tốc độ $1'], [/^Copying (.+)$/, 'Đang chép $1'], [/^Upscaling (.+)$/, 'Đang phóng to $1'],
   [/^Search (\d+) actions…$/, 'Tìm trong $1 thao tác…'], [/^Reset (.+)$/, 'Đặt lại $1'], [/^Renamed (\d+)$/, 'Đã đổi tên $1'],
   [/^used (\d+)×$/, 'đã dùng $1 lần'], [/^(\d+) files$/, '$1 file'], [/^every (\d+)s$/, 'mỗi $1 giây'], [/^(\d+)s each$/, '$1 giây/ảnh'],
-  [/^(\d+) pages?$/, '$1 trang'], [/^(\d+) items$/, '$1 mục'], [/^Page (\d+)$/, 'Trang $1'],
+  [/^(\d+) pages?$/, '$1 trang'], [/^(\d+) areas?$/, '$1 vùng'], [/^(.+) kept of (.+)$/, 'giữ $1/$2'],
+  [/^Version (.+)$/, 'Phiên bản $1'], [/^Installing (.+)…$/, 'Đang cài $1…'], [/^(\d+) items$/, '$1 mục'], [/^Page (\d+)$/, 'Trang $1'],
 ];
 
 let on = false;
@@ -233,19 +290,48 @@ export function t(s) {
 
 const skip = (n) => n.parentElement?.closest('[translate="no"], .chip, .mono, pre, input, textarea, .n, #name, #file');
 
+// What each node said before it was translated, so English can come back without a reload.
+const was = new WeakMap(); // text node → { en, vi }
+const wasAttr = new WeakMap(); // element → { placeholder: { en, vi }, title: { en, vi } }
+
+function text(n) {
+  const v = t(n.nodeValue);
+  if (v !== n.nodeValue) {
+    was.set(n, { en: n.nodeValue, vi: v });
+    n.nodeValue = v;
+  }
+}
+
+function attr(e, k) {
+  const v = t(e[k]);
+  if (v === e[k]) return;
+  const m = wasAttr.get(e) || {};
+  m[k] = { en: e[k], vi: v };
+  wasAttr.set(e, m);
+  e[k] = v;
+}
+
 function walk(root) {
   const it = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-  for (let n = it.nextNode(); n; n = it.nextNode()) {
-    if (!skip(n)) {
-      const v = t(n.nodeValue);
-      if (v !== n.nodeValue) n.nodeValue = v;
-    }
-  }
+  for (let n = it.nextNode(); n; n = it.nextNode()) if (!skip(n)) text(n);
   if (root.querySelectorAll) {
     for (const e of root.querySelectorAll('[placeholder],[title]')) {
-      if (e.placeholder) e.placeholder = t(e.placeholder);
-      if (e.title && !skip(e.firstChild || e)) e.title = t(e.title);
+      if (e.placeholder) attr(e, 'placeholder');
+      if (e.title && !skip(e.firstChild || e)) attr(e, 'title');
     }
+  }
+}
+
+// only what we translated and the page has not changed since is put back
+function restore(root) {
+  const it = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  for (let n = it.nextNode(); n; n = it.nextNode()) {
+    const w = was.get(n);
+    if (w && n.nodeValue === w.vi) n.nodeValue = w.en;
+  }
+  for (const e of root.querySelectorAll('[placeholder],[title]')) {
+    const m = wasAttr.get(e);
+    for (const k in m) if (e[k] === m[k].vi) e[k] = m[k].en;
   }
 }
 
@@ -255,15 +341,14 @@ let observer = null;
 export function setLanguage(lang) {
   on = lang === 'vi' || (lang !== 'en' && (navigator.language || '').toLowerCase().startsWith('vi'));
   document.documentElement.lang = on ? 'vi' : 'en';
-  if (!on) return;
+  if (!on) return restore(document.body);
   walk(document.body);
   if (observer) return;
   observer = new MutationObserver((list) => {
     for (const m of list) {
       if (m.type === 'characterData') {
-        const v = skip(m.target) ? m.target.nodeValue : t(m.target.nodeValue);
-        if (v !== m.target.nodeValue) m.target.nodeValue = v;
-      } else for (const n of m.addedNodes) n.nodeType === 3 ? !skip(n) && (n.nodeValue = t(n.nodeValue)) : n.nodeType === 1 && walk(n);
+        if (!skip(m.target)) text(m.target);
+      } else for (const n of m.addedNodes) n.nodeType === 3 ? !skip(n) && text(n) : n.nodeType === 1 && walk(n);
     }
   });
   observer.observe(document.body, { childList: true, subtree: true, characterData: true });

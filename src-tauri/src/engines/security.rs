@@ -148,13 +148,96 @@ pub fn signature(p: &Path) -> String {
     unsafe { WinVerifyTrust(std::ptr::null_mut(), &mut guid, &mut data as *mut _ as _) };
     match r as u32 {
         0 => "signed, signature valid".into(),
-        0x800B0100 => "not signed".into(),
+        // Windows' own files are mostly signed through a catalog instead of inside the file
+        0x800B0100 => match catalog_signature(p) {
+            Some(0) => "signed (Windows catalog), signature valid".into(),
+            Some(e) => format!("catalog signature not valid (0x{e:08X})"),
+            None => "not signed".into(),
+        },
         0x80096010 => "signature INVALID (file changed after signing)".into(),
         0x800B0109 => "signed by an untrusted root".into(),
         0x800B0101 => "signing certificate expired".into(),
         0x800B0111 => "signer is explicitly distrusted".into(),
         e => format!("signature not valid (0x{e:08X})"),
     }
+}
+
+#[cfg(windows)]
+#[repr(C)]
+struct CatalogInfo {
+    cb_struct: u32,
+    file: [u16; 260],
+}
+
+#[cfg(windows)]
+#[link(name = "wintrust")]
+unsafe extern "system" {
+    fn CryptCATAdminAcquireContext2(admin: *mut isize, subsystem: *const windows_sys::core::GUID, alg: *const u16, policy: *const std::ffi::c_void, flags: u32) -> i32;
+    fn CryptCATAdminCalcHashFromFileHandle2(admin: isize, file: windows_sys::Win32::Foundation::HANDLE, len: *mut u32, hash: *mut u8, flags: u32) -> i32;
+    fn CryptCATAdminEnumCatalogFromHash(admin: isize, hash: *const u8, len: u32, flags: u32, prev: *mut isize) -> isize;
+    fn CryptCATCatalogInfoFromContext(cat: isize, info: *mut CatalogInfo, flags: u32) -> i32;
+    fn CryptCATAdminReleaseCatalogContext(admin: isize, cat: isize, flags: u32) -> i32;
+    fn CryptCATAdminReleaseContext(admin: isize, flags: u32) -> i32;
+}
+
+/// Looks the file's hash up in the system catalogs and verifies the catalog that lists it.
+/// `None` when no catalog knows the file.
+#[cfg(windows)]
+fn catalog_signature(p: &Path) -> Option<u32> {
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::Security::WinTrust::*;
+    let f = std::fs::File::open(p).ok()?;
+    let path: Vec<u16> = p.as_os_str().encode_wide_z();
+    // newer catalogs use SHA-256, older ones SHA-1 (the default when no algorithm is named)
+    let sha256: Vec<u16> = "SHA256".encode_utf16().chain([0]).collect();
+    for alg in [sha256.as_ptr(), std::ptr::null()] {
+        let mut admin = 0isize;
+        if unsafe { CryptCATAdminAcquireContext2(&mut admin, std::ptr::null(), alg, std::ptr::null(), 0) } == 0 {
+            continue;
+        }
+        let mut hash = [0u8; 64];
+        let mut len = hash.len() as u32;
+        // the first try may have read the file: hash it from the start again
+        let _ = std::io::Seek::rewind(&mut &f);
+        let handle = f.as_raw_handle() as windows_sys::Win32::Foundation::HANDLE;
+        let mut result = None;
+        if unsafe { CryptCATAdminCalcHashFromFileHandle2(admin, handle, &mut len, hash.as_mut_ptr(), 0) } != 0 {
+            let cat = unsafe { CryptCATAdminEnumCatalogFromHash(admin, hash.as_ptr(), len, 0, std::ptr::null_mut()) };
+            if cat != 0 {
+                let mut info = CatalogInfo { cb_struct: std::mem::size_of::<CatalogInfo>() as u32, file: [0; 260] };
+                if unsafe { CryptCATCatalogInfoFromContext(cat, &mut info, 0) } != 0 {
+                    let tag: Vec<u16> = hash[..len as usize].iter().map(|b| format!("{b:02X}")).collect::<String>().encode_utf16().chain([0]).collect();
+                    let mut ci: WINTRUST_CATALOG_INFO = unsafe { std::mem::zeroed() };
+                    ci.cbStruct = std::mem::size_of::<WINTRUST_CATALOG_INFO>() as u32;
+                    ci.pcwszCatalogFilePath = info.file.as_ptr();
+                    ci.pcwszMemberTag = tag.as_ptr();
+                    ci.pcwszMemberFilePath = path.as_ptr();
+                    ci.hMemberFile = handle;
+                    ci.pbCalculatedFileHash = hash.as_mut_ptr();
+                    ci.cbCalculatedFileHash = len;
+                    ci.hCatAdmin = admin;
+                    let mut data: WINTRUST_DATA = unsafe { std::mem::zeroed() };
+                    data.cbStruct = std::mem::size_of::<WINTRUST_DATA>() as u32;
+                    data.dwUIChoice = WTD_UI_NONE;
+                    data.fdwRevocationChecks = WTD_REVOKE_NONE;
+                    data.dwUnionChoice = WTD_CHOICE_CATALOG;
+                    data.Anonymous.pCatalog = &mut ci;
+                    data.dwStateAction = WTD_STATEACTION_VERIFY;
+                    let mut guid = WINTRUST_ACTION_GENERIC_VERIFY_V2;
+                    let r = unsafe { WinVerifyTrust(std::ptr::null_mut(), &mut guid, &mut data as *mut _ as _) };
+                    data.dwStateAction = WTD_STATEACTION_CLOSE;
+                    unsafe { WinVerifyTrust(std::ptr::null_mut(), &mut guid, &mut data as *mut _ as _) };
+                    result = Some(r as u32);
+                }
+                unsafe { CryptCATAdminReleaseCatalogContext(admin, cat, 0) };
+            }
+        }
+        unsafe { CryptCATAdminReleaseContext(admin, 0) };
+        if result.is_some() {
+            return result;
+        }
+    }
+    None
 }
 
 #[cfg(not(windows))]
@@ -242,9 +325,18 @@ fn sandbox(src: &Path) -> Result<()> {
     if !sandbox_available() {
         bail!("Windows Sandbox needs Windows Pro or Enterprise with the feature turned on");
     }
+    // copies from earlier sandboxes (read after the job ended, so never job temp files) go after a day
+    let root = std::env::temp_dir().join("shiftdrop");
+    for e in std::fs::read_dir(&root).into_iter().flatten().flatten() {
+        let old = e.metadata().and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).is_some_and(|a| a.as_secs() > 24 * 3600);
+        if old && e.file_name().to_string_lossy().starts_with("sandbox-") {
+            let p = e.path();
+            let _ = if p.is_dir() { std::fs::remove_dir_all(&p) } else { std::fs::remove_file(&p) };
+        }
+    }
     // only a copy of this one file is shared, not the rest of its folder (e.g. all of Downloads)
     let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_millis();
-    let dir = std::env::temp_dir().join("shiftdrop").join(format!("sandbox-{stamp}"));
+    let dir = root.join(format!("sandbox-{stamp}"));
     std::fs::create_dir_all(&dir)?;
     std::fs::copy(src, dir.join(name(src)))?;
     let esc = |s: &str| s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;");
@@ -270,9 +362,8 @@ fn encrypt(src: &Path, password: &str) -> Result<PathBuf> {
     if password.chars().count() < 8 {
         bail!("password is too short");
     }
-    let out = PathBuf::from(format!("{}.age", out_path(src, None, &ext(src)).display()));
-    crate::naming::claim(&out);
-    let out = if out.exists() { crate::naming::unique(src.parent().unwrap(), &name(src), "age") } else { out };
+    // "report.pdf" → "report.pdf.age" next to it, so decrypting gives the same name back
+    let out = crate::naming::unique(src.parent().context("no folder")?, &name(src), "age");
     let enc = age::Encryptor::with_user_passphrase(age::secrecy::SecretString::from(password.to_owned()));
     let mut w = enc.wrap_output(std::fs::File::create(&out)?)?;
     std::io::copy(&mut std::fs::File::open(src)?, &mut w)?;
@@ -446,6 +537,7 @@ pub fn curl_secret(cmd: &mut std::process::Command, config: &str) -> Result<std:
         bail!("the saved key contains characters a key never has; paste it again in Settings");
     }
     let mut child = cmd.arg("-K").arg("-").stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
+    super::tools::adopt(child.id());
     child.stdin.take().context("no stdin")?.write_all(config.as_bytes())?;
     Ok(child.wait_with_output()?)
 }
@@ -618,18 +710,36 @@ fn install_tool_once(id: &str) -> Result<PathBuf> {
         let _ = std::fs::remove_dir_all(&new);
         return Err(e);
     }
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::rename(&new, &dir).context("the old version is still in use; close what is using it and try again")?;
+    // swap: the old copy moves aside first (fails cleanly while it is running), comes back if
+    // the new one can't move in, and is deleted only once the new one is in place
+    let old = tools_dir().join(format!("{id}.old"));
+    let _ = std::fs::remove_dir_all(&old);
+    let had_old = dir.exists();
+    if had_old {
+        if let Err(e) = std::fs::rename(&dir, &old) {
+            let _ = std::fs::remove_dir_all(&new);
+            return Err(anyhow::Error::from(e).context("the old version is still in use; close what is using it and try again"));
+        }
+    }
+    if let Err(e) = std::fs::rename(&new, &dir) {
+        if had_old {
+            let _ = std::fs::rename(&old, &dir);
+        }
+        let _ = std::fs::remove_dir_all(&new);
+        return Err(anyhow::Error::from(e).context("couldn't put the new version in place"));
+    }
+    let _ = std::fs::remove_dir_all(&old);
     tool_path(id).context("the download didn't contain the program")
 }
 
 fn download(url: &str, to: &Path, min_size: u64) -> Result<()> {
-    let ok = super::tools::quiet(&curl())
+    let mut child = super::tools::quiet(&curl())
         .args(["-sfL", "--proto", "=https", "--proto-redir", "=https", "--retry", "2", "--max-time", "1800", "-o"])
         .arg(to)
         .arg(url)
-        .status()?
-        .success();
+        .spawn()?;
+    super::tools::adopt(child.id());
+    let ok = child.wait()?.success();
     if !ok || std::fs::metadata(to).map(|m| m.len()).unwrap_or(0) < min_size {
         let _ = std::fs::remove_file(to);
         bail!("download failed: {}", url.rsplit('/').next().unwrap_or(url));

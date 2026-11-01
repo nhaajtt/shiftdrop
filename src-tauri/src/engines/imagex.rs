@@ -155,7 +155,10 @@ fn write_ico(sq: &RgbaImage, sizes: &[u32], out: &Path) -> Result<()> {
 
 /// App icon (.ico with every Windows size) or a website favicon folder.
 fn icon_set(src: &Path, web: bool) -> Result<Vec<PathBuf>> {
-    let sq = square(&open(src)?);
+    // the biggest icon is 512 px: shrinking first keeps a huge picture from becoming a huger square
+    let img = open(src)?;
+    let img = if img.width().max(img.height()) > 1024 { img.resize(1024, 1024, imageops::FilterType::Lanczos3) } else { img };
+    let sq = square(&img);
     if !web {
         let out = out_path(src, Some("icon"), "ico");
         write_ico(&sq, &[16, 24, 32, 48, 64, 128, 256], &out)?;
@@ -249,7 +252,7 @@ fn watermark(src: &Path, text: &str) -> Result<PathBuf> {
     let png = dir.join("in.png");
     open(src)?.save(&png)?;
     let tmp_out = dir.join("out.png");
-    let vf = "drawtext=fontfile=font.ttf:textfile=text.txt:fontcolor=white@0.55:borderw=2:bordercolor=black@0.35:fontsize=h/18:x=w-tw-h/30:y=h-th-h/30";
+    let vf = "drawtext=fontfile=font.ttf:textfile=text.txt:expansion=none:fontcolor=white@0.55:borderw=2:bordercolor=black@0.35:fontsize=h/18:x=w-tw-h/30:y=h-th-h/30";
     let args: Vec<String> = ["-i", "in.png", "-vf", vf, "out.png"].iter().map(|s| s.to_string()).collect();
     let r = super::tools::ffmpeg_in(Some(&dir), &args, 0.0, &|_| {});
     let result = r.and_then(|_| {

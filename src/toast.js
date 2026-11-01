@@ -13,7 +13,8 @@ const $ = (id) => document.getElementById(id);
 const jobs = new Map(); // id → latest update
 let shown = null; // id of the job on screen
 let hideTimer = 0;
-let hovering = false;
+const seenFail = new Set(); // failures already shown, so each is shown once
+const isFail = (j) => !!j && !!j.error && j.state !== 'running';
 
 const TAGS = { running: 'Working', done: 'Done', error: 'Failed' };
 
@@ -24,8 +25,7 @@ function render(u) {
   $('title').textContent = u.error && u.state !== 'running' ? u.title : u.state === 'done' ? doneTitle(u.title) : `${u.title}…`;
   $('fill').style.transform = `scaleX(${u.percent.toFixed(3)})`;
   $('count').textContent = `${u.done} of ${u.total} saved`;
-  const waiting = [...jobs.values()].filter((j) => j.state === 'running' && j.id !== u.id).length;
-  $('queue').textContent = waiting ? `+${waiting} queued` : '';
+  queueNote(u);
   $('show').hidden = !u.outputs.length;
   $('drag').hidden = !u.outputs.length || u.state !== 'done';
   $('undo').hidden = !u.outputs.length || u.state !== 'done';
@@ -41,12 +41,37 @@ function render(u) {
   showFailure(u);
 }
 
+// what waits behind the card on screen: a count while working, the next job's name under a failure
+function queueNote(u) {
+  const run = [...jobs.values()].filter((j) => j.state === 'running' && j.id !== u.id);
+  if (!run.length) $('queue').textContent = '';
+  else if (isFail(u)) $('queue').textContent = `${t('Next:')} ${t(`${run[0].title}…`)}${run.length > 1 ? ` +${run.length - 1}` : ''}`;
+  else $('queue').textContent = `+${run.length} queued`;
+}
+
+// the window only talks to the backend when the measured height really changes
+let sentH = 112;
+function setHeight(px) {
+  if (px === sentH) return;
+  sentH = px;
+  invoke('toast_height', { height: px }).catch(() => {});
+}
+// measure the content itself (the card is stretched to the window, so it could never shrink)
+function fitHeight() {
+  const c = $('card');
+  c.style.height = 'auto';
+  const px = Math.ceil(c.offsetHeight) + 18;
+  c.style.height = '';
+  setHeight(document.body.classList.contains('failed') ? px : 112);
+}
+
 // --- failures: stay on screen with what happened and how to fix it
 let fixing = null; // the fix offered for the job on screen
 function showFailure(u) {
   const failed = !!u.error && u.state !== 'running';
   document.body.classList.toggle('failed', failed);
   if (failed) {
+    seenFail.add(u.id);
     const fix = fixFor(u.error);
     fixing = fix;
     $('why').textContent = fix.why;
@@ -58,7 +83,22 @@ function showFailure(u) {
     $('report').hidden = fix.action?.kind === 'report';
   }
   // grow the window to fit the explanation, shrink back for progress
-  requestAnimationFrame(() => invoke('toast_height', { height: failed ? Math.ceil($('card').scrollHeight) + 18 : 112 }));
+  requestAnimationFrame(fitHeight);
+}
+
+// the user is done with the failure on screen: show whatever waited behind it
+function dismissFailure() {
+  document.body.classList.remove('failed');
+  if (isFail(jobs.get(shown))) jobs.delete(shown);
+  shown = null;
+  const next = pickNext();
+  if (next) render(next);
+  else setHeight(112);
+}
+
+function pickNext() {
+  const all = [...jobs.values()].filter((j) => j.id !== shown);
+  return all.find((j) => isFail(j) && !seenFail.has(j.id)) || all.find((j) => j.state === 'running');
 }
 
 $('fixbtn').addEventListener('click', async () => {
@@ -84,10 +124,15 @@ $('fixbtn').addEventListener('click', async () => {
 // runs the same action again (read back from the Activity list)
 $('retry').addEventListener('click', async () => {
   const u = jobs.get(shown);
-  const rec = (await invoke('get_history')).find((r) => r.id === u?.id);
-  if (!rec?.action) return invoke('open_hub', { paths: [], view: 'activity', item: null });
-  document.body.classList.remove('failed');
-  invoke('run_action', { paths: rec.files, action: rec.action, title: rec.title });
+  try {
+    const rec = (await invoke('get_history').catch(() => [])).find((r) => r.id === u?.id);
+    if (!rec?.action) return await invoke('open_hub', { paths: [], view: 'activity', item: null });
+    await invoke('run_action', { paths: rec.files, action: rec.action, title: rec.title });
+    dismissFailure();
+  } catch (e) {
+    $('how').textContent = String(e);
+    fitHeight();
+  }
 });
 
 $('details').addEventListener('click', () => invoke('open_hub', { paths: [], view: 'activity', item: null }));
@@ -112,8 +157,9 @@ function doneTitle(title) {
 function scheduleHide(ms) {
   clearTimeout(hideTimer);
   hideTimer = setTimeout(() => {
-    if (hovering) return scheduleHide(1500);
-    if ([...jobs.values()].some((j) => j.state === 'running')) return;
+    // :hover is read now, so a pointer that was inside when the window hid can't pin it open
+    if (document.body.matches(':hover')) return scheduleHide(1500);
+    if ([...jobs.values()].some((j) => j.state === 'running') || isFail(jobs.get(shown))) return;
     jobs.clear();
     invoke('toast_hide');
   }, ms);
@@ -123,11 +169,17 @@ listen('job', ({ payload: u }) => {
   document.body.classList.remove('update');
   jobs.set(u.id, u);
   const current = jobs.get(shown);
-  // keep showing a running job until it finishes; then move on to the newest
-  if (!current || current.state !== 'running' || u.id === shown) render(u);
+  // keep showing a running job or a failure until it is finished with; the rest queues behind it
+  if (!current || (current.state !== 'running' && !isFail(current)) || u.id === shown) render(u);
+  else queueNote(current);
   if (u.state !== 'running') {
-    const next = [...jobs.values()].find((j) => j.state === 'running');
-    if (next && next.id !== u.id) setTimeout(() => render(jobs.get(next.id)), 1200);
+    if (!isFail(jobs.get(shown))) {
+      setTimeout(() => {
+        const next = pickNext();
+        const now = jobs.get(shown);
+        if (next && (!now || now.state !== 'running') && !isFail(now)) render(next);
+      }, 1200);
+    }
     // failures wait for the user; successes slip away
     if (u.error) clearTimeout(hideTimer);
     else scheduleHide(3500);
@@ -167,13 +219,10 @@ $('undo').addEventListener('click', async () => {
   }
 });
 $('close').addEventListener('click', () => {
-  document.body.classList.remove('failed');
-  invoke('toast_height', { height: 112 });
   clearTimeout(hideTimer);
+  dismissFailure();
   invoke('toast_hide');
 });
-document.body.addEventListener('pointerenter', () => (hovering = true));
-document.body.addEventListener('pointerleave', () => (hovering = false));
 
 // --- updates: checked shortly after start and then once a day; never installed without a click
 

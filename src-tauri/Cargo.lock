@@ -5105,6 +5105,8 @@ version = "1.0.154"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e7e9cc8b1b85264074fbcc02a88680c4096b1e47df8f739dceb03bf482f04bd6"
 dependencies = [
+ "foldhash 0.2.0",
+ "indexmap 2.14.2",
  "itoa",
  "memchr",
  "serde",
@@ -5253,7 +5255,7 @@ dependencies = [
 
 [[package]]
 name = "shiftdrop"
-version = "1.0.9"
+version = "1.0.10"
 dependencies = [
  "age",
  "anyhow",
@@ -5262,6 +5264,7 @@ dependencies = [
  "image 0.25.10",
  "infer 0.19.0",
  "md-5",
+ "moxcms",
  "ort",
  "oxipng",
  "pdfium-render",
@@ -6177,6 +6180,7 @@ version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "185d8ab0dfbb35cf1399a6344d8484209c088f75f8f68230da55d48d95d43e3d"
 dependencies = [
+ "indexmap 2.14.2",
  "serde",
  "serde_spanned 0.6.9",
  "toml_datetime 0.6.3",

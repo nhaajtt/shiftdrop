@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import { addView, h, name, settings, settingsSections, shared, toggle } from './ui.js';
+import { addView, h, name, secretField, settings, settingsSections, shared, toggle } from './ui.js';
 
 // Settings cards for optional features. Anything that talks to the internet is off or empty
 // until the user fills it in here.
@@ -34,10 +34,10 @@ settingsSections.push(async (s) => {
         btn.title = String(e);
       }
     };
-    card.append(h('div', { class: 'field' }, h('div', { class: 'what' }, label, h('small', {}, `${hint}. Downloaded from its official GitHub release.`)), btn));
+    card.append(h('div', { class: 'field' }, h('div', { class: 'what' }, label, h('small', {}, hint, '. ', 'Downloaded from its official GitHub release.')), btn));
   }
   const rules = h('input', { type: 'text', value: s.yara_rules || '', placeholder: 'Folder with .yar rules, e.g. C:\\Tools\\rules', style: 'flex:1' });
-  rules.onchange = () => settings.set({ yara_rules: rules.value.trim().replace(/^"|"$/g, '') });
+  rules.onchange = () => settings.set({ yara_rules: rules.value.trim().replace(/^"|"$/g, '') }).catch((e) => invoke('ui_log', { msg: `setting failed: ${e}` }));
   card.append(h('label', { class: 'field' }, h('div', { class: 'what' }, 'YARA rules', h('small', {}, 'Used by YARA scan on programs.')), rules));
   const sandbox = await invoke('sandbox_ok');
   card.append(
@@ -49,7 +49,7 @@ settingsSections.push(async (s) => {
 settingsSections.push(async (s) => {
   const card = h('div', { class: 'card glass' }, h('div', { class: 'label', style: 'padding-bottom:6px' }, 'Online services'));
   const key = h('input', { type: 'password', placeholder: 'VirusTotal API key (optional)', value: s.vt_key || '', style: 'flex:1;min-width:260px' });
-  key.onchange = () => settings.set({ vt_key: key.value.trim() });
+  secretField(key, 'vt_key');
   card.append(
     h('label', { class: 'field' }, h('div', { class: 'what' }, 'VirusTotal', h('small', {}, 'Only the file’s SHA-256 is sent, never the file. Without a key the public report page opens instead.')), key),
   );

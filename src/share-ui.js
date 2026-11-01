@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import { addView, h, name, settings, settingsSections, shared } from './ui.js';
+import { addView, h, name, secretField, settings, settingsSections, shared } from './ui.js';
 
 // "To phone" and "Upload link": opened from the wheel or the Actions list with the files.
 
@@ -66,7 +66,8 @@ addView({
 settingsSections.push(async (s) => {
   const field = (key, label, hint, type = 'text', ph = '') => {
     const i = h('input', { type, value: s[key] || '', placeholder: ph, style: 'flex:1;min-width:240px', autocomplete: 'off' });
-    i.onchange = () => settings.set({ [key]: i.value.trim() });
+    if (type === 'password') secretField(i, key);
+    else i.onchange = () => settings.set({ [key]: i.value.trim() }).catch((e) => invoke('ui_log', { msg: `setting failed: ${e}` }));
     return h('label', { class: 'field' }, h('div', { class: 'what' }, label, hint && h('small', {}, hint)), i);
   };
   return h(

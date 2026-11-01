@@ -14,7 +14,7 @@ pub fn run(paths: &[PathBuf], action: &Action, _progress: Progress) -> Result<Ve
     match action {
         Action::Base64 { decode: false } => {
             let p = &paths[0];
-            let data = std::fs::read(p)?;
+            let data = super::files::read_capped(p, 100)?;
             let b64 = base64::engine::general_purpose::STANDARD.encode(&data);
             // images become data URLs, ready to paste into HTML or CSS
             let text = match super::security::sniff(p) {
@@ -32,13 +32,8 @@ pub fn run(paths: &[PathBuf], action: &Action, _progress: Progress) -> Result<Ve
         }
         Action::Base64 { decode: true } => {
             let p = &paths[0];
-            let raw = std::fs::read_to_string(p).context("not a text file")?;
-            let body = raw.trim().rsplit_once("base64,").map(|(_, b)| b).unwrap_or(raw.trim());
-            let clean: String = body.chars().filter(|c| !c.is_whitespace()).collect();
-            let data = base64::engine::general_purpose::STANDARD
-                .decode(&clean)
-                .or_else(|_| base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(clean.trim_end_matches('=')))
-                .context("not valid Base64")?;
+            let raw = String::from_utf8(super::files::read_capped(p, 200)?).ok().context("not a text file")?;
+            let data = decode_base64(&raw)?;
             let e = super::security::sniff_bytes(&data).map(|(e, _)| e).unwrap_or_else(|| "bin".into());
             let out = unique(p.parent().context("no folder")?, &format!("{} decoded", stem(p)), &e);
             std::fs::write(&out, data)?;
@@ -53,6 +48,20 @@ pub fn run(paths: &[PathBuf], action: &Action, _progress: Progress) -> Result<Ve
         Action::Diff => diff(paths),
         _ => bail!("not available"),
     }
+}
+
+/// Plain or URL-safe Base64, padded or not, optionally as a data URL, line breaks allowed.
+pub(crate) fn decode_base64(raw: &str) -> Result<Vec<u8>> {
+    use base64::engine::general_purpose::{STANDARD, STANDARD_NO_PAD, URL_SAFE_NO_PAD};
+    let body = raw.trim().rsplit_once("base64,").map(|(_, b)| b).unwrap_or(raw.trim());
+    let clean: String = body.chars().filter(|c| !c.is_whitespace()).collect();
+    let bare = clean.trim_end_matches('=');
+    STANDARD
+        .decode(&clean)
+        .or_else(|_| STANDARD_NO_PAD.decode(bare))
+        .or_else(|_| URL_SAFE_NO_PAD.decode(bare))
+        .ok()
+        .context("not valid Base64")
 }
 
 pub fn path_as(p: &Path, style: &str) -> String {

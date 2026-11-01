@@ -157,13 +157,26 @@ pub fn merge(paths: &[PathBuf], progress: Progress) -> Result<Vec<PathBuf>> {
 
 /// Small page previews (JPEG data URLs) for the page and signature editors.
 #[tauri::command]
-pub async fn pdf_thumbs(path: String, width: u32) -> Result<Vec<String>, String> {
+/// `only`: one entry per page, but only that page is drawn (the others are empty), for editors
+/// that show a single page large.
+pub async fn pdf_thumbs(path: String, width: u32, limit: Option<u32>, only: Option<u32>) -> Result<Vec<String>, String> {
     tauri::async_runtime::spawn_blocking(move || -> Result<Vec<String>> {
         use base64::Engine;
         let doc = load(Path::new(&path))?;
+        let n = doc.pages().len() as u32;
+        let count = limit.map_or(n, |l| l.min(n));
+        // every page is still sent for long documents, just smaller, so the answer stays a sane size
+        let mut w = width.clamp(32, 800);
+        if count > 60 && only.is_none() {
+            w = (w * 60 / count).max(w.min(48));
+        }
         let mut out = Vec::new();
-        for page in doc.pages().iter() {
-            let im = page.render_with_config(&PdfRenderConfig::new().set_target_width(width.clamp(32, 800) as _).set_maximum_height(1600))?.as_image()?;
+        for (i, page) in doc.pages().iter().take(count as usize).enumerate() {
+            if only.is_some_and(|o| o as usize != i) {
+                out.push(String::new());
+                continue;
+            }
+            let im = page.render_with_config(&PdfRenderConfig::new().set_target_width(w as _).set_maximum_height((w * 2) as _))?.as_image()?;
             out.push(format!("data:image/jpeg;base64,{}", base64::engine::general_purpose::STANDARD.encode(img::jpeg_bytes(&im, 80)?)));
         }
         Ok(out)

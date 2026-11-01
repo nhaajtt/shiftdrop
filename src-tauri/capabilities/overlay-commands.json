@@ -1,0 +1,21 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "overlay-commands",
+  "description": "The wheel: runs actions on the dragged files and opens the hub, editors and apps.",
+  "windows": [
+    "overlay"
+  ],
+  "permissions": [
+    "allow-get-apps",
+    "allow-get-settings",
+    "allow-open-editor",
+    "allow-open-hub",
+    "allow-open-with",
+    "allow-overlay-hide",
+    "allow-run-action",
+    "allow-sandbox-ok",
+    "allow-shelf-add",
+    "allow-tools-status",
+    "allow-ui-log"
+  ]
+}

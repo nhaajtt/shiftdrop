@@ -14,29 +14,39 @@ use tauri::AppHandle;
 static MADE: Mutex<Option<HashSet<PathBuf>>> = Mutex::new(None);
 
 pub fn made(outputs: &[PathBuf]) {
-    MADE.lock().unwrap().get_or_insert_with(HashSet::new).extend(outputs.iter().cloned());
+    let mut m = MADE.lock().unwrap_or_else(|e| e.into_inner());
+    let m = m.get_or_insert_with(HashSet::new);
+    // a long-running PC: older outputs are already in the watcher's "seen" lists anyway
+    if m.len() > 10_000 {
+        m.clear();
+    }
+    m.extend(outputs.iter().cloned());
 }
 
+/// Made by ShiftDrop, or still being written by a job (a slow encode can sit at one size for a while).
 fn is_made(p: &PathBuf) -> bool {
-    MADE.lock().unwrap().as_ref().is_some_and(|m| m.contains(p))
+    MADE.lock().unwrap_or_else(|e| e.into_inner()).as_ref().is_some_and(|m| m.contains(p)) || crate::naming::is_running_output(p)
 }
 
 pub fn start(app: AppHandle) {
     std::thread::spawn(move || {
-        // folder → files already there (or handled) and sizes of files still being written
-        let mut known: HashMap<PathBuf, HashSet<PathBuf>> = HashMap::new();
-        let mut growing: HashMap<PathBuf, u64> = HashMap::new();
+        // watch → files already there (or handled), and sizes of files still being written.
+        // Each watch keeps its own list: two watches on one folder (PDFs here, PNGs there) both fire.
+        let mut known: HashMap<String, HashSet<PathBuf>> = HashMap::new();
+        let mut growing: HashMap<(String, PathBuf), u64> = HashMap::new();
         loop {
             std::thread::sleep(Duration::from_secs(2));
             let watches = settings::get(&app).watches;
-            known.retain(|dir, _| watches.iter().any(|w| std::path::Path::new(&w.folder) == dir.as_path()));
+            let key = |w: &settings::Watch| format!("{}|{}|{}", w.folder, w.exts.join(","), w.action);
+            known.retain(|k, _| watches.iter().any(|w| key(w) == *k));
+            growing.retain(|(_, p), _| p.exists());
             for w in &watches {
                 let dir = PathBuf::from(&w.folder);
                 let Ok(rd) = std::fs::read_dir(&dir) else { continue };
                 let now: Vec<PathBuf> = rd.flatten().map(|e| e.path()).filter(|p| p.is_file()).collect();
-                let Some(seen) = known.get_mut(&dir) else {
+                let Some(seen) = known.get_mut(&key(w)) else {
                     // first look: what is already there is left alone
-                    known.insert(dir, now.into_iter().collect());
+                    known.insert(key(w), now.into_iter().collect());
                     continue;
                 };
                 for p in now {
@@ -44,11 +54,12 @@ pub fn start(app: AppHandle) {
                         continue;
                     }
                     let size = std::fs::metadata(&p).map(|m| m.len()).unwrap_or(0);
-                    if growing.get(&p) != Some(&size) || size == 0 {
-                        growing.insert(p, size);
+                    let g = (key(w), p.clone());
+                    if growing.get(&g) != Some(&size) || size == 0 {
+                        growing.insert(g, size);
                         continue;
                     }
-                    growing.remove(&p);
+                    growing.remove(&g);
                     seen.insert(p.clone());
                     if !w.exts.is_empty() && !w.exts.iter().any(|e| crate::naming::ext(&p) == e.trim().trim_start_matches('.').to_lowercase()) {
                         continue;

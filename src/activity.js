@@ -24,7 +24,13 @@ function when(t) {
 async function load() {
   history = await invoke('get_history').catch(() => []);
   shared.nav?.();
-  if (shared.view?.() === 'activity') shared.show('activity');
+  if (shared.view?.() !== 'activity') return;
+  const main = document.getElementById('main');
+  // a download or a fix in progress would be reset by a redraw: the next click or tab redraws anyway
+  if (main?.querySelector('button[data-busy]')) return;
+  const top = main?.scrollTop || 0;
+  shared.show('activity');
+  requestAnimationFrame(() => main && (main.scrollTop = top));
 }
 
 function card(r) {
@@ -39,10 +45,12 @@ function card(r) {
   if (bad && r.error) {
     const fix = fixFor(r.error);
     const btns = h('div', { class: 'row-btns' });
+    const say = (e) => (fixBox.querySelector('p').textContent = String(e));
     if (fix.action) {
       const b = h('button', { class: 'btn primary' }, fix.action.label);
       b.onclick = async () => {
         b.disabled = true;
+        b.dataset.busy = '1';
         if (fix.action.kind === 'addon') b.textContent = 'Downloading…';
         try {
           await runFix(fix.action, invoke, `${r.title}: ${r.error}`);
@@ -51,15 +59,17 @@ function card(r) {
         } catch (e) {
           b.disabled = false;
           b.textContent = fix.action.label;
-          fixBox.querySelector('p').textContent = String(e);
+          say(e);
+        } finally {
+          delete b.dataset.busy;
         }
       };
       btns.append(b);
     }
     if (r.action) {
-      btns.append(h('button', { class: 'btn', onclick: () => invoke('run_action', { paths: r.files, action: r.action, title: r.title }) }, 'Try again'));
+      btns.append(h('button', { class: 'btn', onclick: () => invoke('run_action', { paths: r.files, action: r.action, title: r.title }).catch(say) }, 'Try again'));
     }
-    if (fix.action?.kind !== 'report') btns.append(h('button', { class: 'btn', onclick: () => invoke('report_bug', { context: `${r.title}: ${r.error}` }) }, 'Report'));
+    if (fix.action?.kind !== 'report') btns.append(h('button', { class: 'btn', onclick: () => invoke('report_bug', { context: `${r.title}: ${r.error}` }).catch(say) }, 'Report'));
     const fixBox = h('div', { class: 'fix' }, h('b', {}, fix.why), h('p', {}, fix.how), btns);
     el.append(h('pre', {}, r.error), fixBox);
   }

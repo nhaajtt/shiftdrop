@@ -1,0 +1,16 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "peek-commands",
+  "description": "Quick look: reads the previewed file only.",
+  "windows": [
+    "peek"
+  ],
+  "permissions": [
+    "allow-file-info",
+    "allow-get-settings",
+    "allow-open-hub",
+    "allow-pdf-thumbs",
+    "allow-read-text",
+    "allow-reveal"
+  ]
+}

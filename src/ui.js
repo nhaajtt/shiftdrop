@@ -51,6 +51,31 @@ export const settings = {
   },
 };
 
+/** The backend shows this for a saved key; sending exactly this back means "unchanged". */
+export const MASK = '••••••••';
+
+/** Wires a key field: shows the mask, clears it to type a new key, and never sends the mask itself. */
+export function secretField(input, key) {
+  let saved = input.value; // what the backend holds, as the window sees it
+  // the mask is selected on focus: typing replaces it with a new key, Delete removes the saved one
+  input.addEventListener('focus', () => {
+    if (input.value === MASK) setTimeout(() => input.select());
+  });
+  input.addEventListener('change', async () => {
+    let v = input.value.trim();
+    if (v === MASK) return;
+    // typed after the mask instead of over it: only the new part is the key
+    if (v.startsWith(MASK)) v = v.slice(MASK.length).trim();
+    try {
+      await settings.set({ [key]: v });
+      saved = v ? MASK : '';
+      input.value = saved;
+    } catch (e) {
+      invoke('ui_log', { msg: `setting failed: ${e}` });
+    }
+  });
+}
+
 /** Other modules add cards to the settings view (features, keys, …). */
 export const settingsSections = [];
 

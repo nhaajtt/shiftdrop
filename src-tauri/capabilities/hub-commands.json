@@ -1,0 +1,38 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "hub-commands",
+  "description": "Settings, Activity and all actions: the one window that changes settings, renames and shares.",
+  "windows": [
+    "hub"
+  ],
+  "permissions": [
+    "allow-clear-history",
+    "allow-clipboard-files",
+    "allow-context-menu",
+    "allow-context-menu-on",
+    "allow-folder-exists",
+    "allow-get-apps",
+    "allow-get-autostart",
+    "allow-get-history",
+    "allow-get-settings",
+    "allow-hub-take",
+    "allow-open-editor",
+    "allow-open-hub",
+    "allow-open-link",
+    "allow-open-logs",
+    "allow-open-with",
+    "allow-rename-files",
+    "allow-report-bug",
+    "allow-reveal",
+    "allow-run-action",
+    "allow-sandbox-ok",
+    "allow-set-autostart",
+    "allow-share-lan",
+    "allow-share-r2",
+    "allow-shelf-add",
+    "allow-tools-install",
+    "allow-tools-status",
+    "allow-ui-log",
+    "allow-update-settings"
+  ]
+}

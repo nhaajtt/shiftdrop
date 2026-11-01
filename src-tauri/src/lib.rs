@@ -110,6 +110,10 @@ fn start_drag_watch(app: tauri::AppHandle) {
                     if !s.enabled || win::is_own_window_at(ox, oy) || (s.explorer_only && !win::is_explorer_at(ox, oy)) {
                         continue;
                     }
+                    // Shift-drag from empty space in Explorer selects files with a box: not a file drag
+                    if win::is_explorer_at(ox, oy) && !explorer::on_item(ox, oy) {
+                        continue;
+                    }
                     let paths = explorer::selection(win::root_handle_at(ox, oy));
                     log(&format!("shift-drag from {ox},{oy}: {paths:?}"));
                     if paths.is_empty() {
@@ -138,6 +142,7 @@ fn start_drag_watch(app: tauri::AppHandle) {
                         let _ = app.emit_to("overlay", "overlay:key", n);
                         if n == 0 {
                             open.store(false, Ordering::SeqCst);
+                            windows::hide_overlay_later(&app);
                         }
                     }
                 }
@@ -286,6 +291,10 @@ pub fn run() {
             }
             if let RunEvent::ExitRequested { api, code: None, .. } = ev {
                 api.prevent_exit();
+            } else if let RunEvent::Exit = ev {
+                // quitting mid-job: stop its programs and don't leave half-written files behind
+                engines::tools::end_all();
+                naming::discard_running();
             }
         });
 }

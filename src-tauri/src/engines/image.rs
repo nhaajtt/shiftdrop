@@ -20,8 +20,12 @@ pub fn open(path: &Path) -> Result<DynamicImage> {
     let native = || -> Result<DynamicImage> {
         let mut dec = ImageReader::open(path)?.with_guessed_format()?.into_decoder()?;
         let orientation = dec.orientation()?;
+        let icc = dec.icc_profile().ok().flatten();
         let mut img = DynamicImage::from_decoder(dec)?;
         img.apply_orientation(orientation);
+        if let Some(icc) = icc {
+            to_srgb(&mut img, &icc);
+        }
         Ok(img)
     };
     match native() {
@@ -37,6 +41,60 @@ pub fn open(path: &Path) -> Result<DynamicImage> {
             let _ = fs::remove_file(tmp);
             Ok(img)
         }
+    }
+}
+
+/// Outputs are written without a colour profile, so pictures in a wider space (iPhone and Mac
+/// Display P3, Adobe RGB from cameras) are converted to sRGB here; otherwise they'd look washed out.
+/// Anything the profile doesn't allow (grey, CMYK, float pixels, a broken profile) is left as it is.
+fn to_srgb(img: &mut DynamicImage, icc: &[u8]) {
+    use moxcms::{ColorProfile, DataColorSpace, Layout, TransformOptions};
+    let Ok(src) = ColorProfile::new_from_slice(icc) else { return };
+    let srgb = ColorProfile::new_srgb();
+    if src.color_space != DataColorSpace::Rgb {
+        return;
+    }
+    let (a, b) = (src.colorant_matrix().v, srgb.colorant_matrix().v);
+    let same = a.iter().flatten().zip(b.iter().flatten()).all(|(x, y)| (x - y).abs() < 0.002);
+    // same primaries and the same tone curve: already sRGB
+    if same && src.red_trc == srgb.red_trc && src.green_trc == srgb.green_trc && src.blue_trc == srgb.blue_trc {
+        return;
+    }
+    let opts = TransformOptions::default();
+    match img {
+        DynamicImage::ImageRgb8(p) => {
+            if let Ok(t) = src.create_transform_8bit(Layout::Rgb, &srgb, Layout::Rgb, opts) {
+                let mut out = vec![0u8; p.len()];
+                if t.transform(p, &mut out).is_ok() {
+                    p.copy_from_slice(&out);
+                }
+            }
+        }
+        DynamicImage::ImageRgba8(p) => {
+            if let Ok(t) = src.create_transform_8bit(Layout::Rgba, &srgb, Layout::Rgba, opts) {
+                let mut out = vec![0u8; p.len()];
+                if t.transform(p, &mut out).is_ok() {
+                    p.copy_from_slice(&out);
+                }
+            }
+        }
+        DynamicImage::ImageRgb16(p) => {
+            if let Ok(t) = src.create_transform_16bit(Layout::Rgb, &srgb, Layout::Rgb, opts) {
+                let mut out = vec![0u16; p.len()];
+                if t.transform(p, &mut out).is_ok() {
+                    p.copy_from_slice(&out);
+                }
+            }
+        }
+        DynamicImage::ImageRgba16(p) => {
+            if let Ok(t) = src.create_transform_16bit(Layout::Rgba, &srgb, Layout::Rgba, opts) {
+                let mut out = vec![0u16; p.len()];
+                if t.transform(p, &mut out).is_ok() {
+                    p.copy_from_slice(&out);
+                }
+            }
+        }
+        _ => {}
     }
 }
 
@@ -64,12 +122,28 @@ fn png_bytes(img: &DynamicImage) -> Result<Vec<u8>> {
     Ok(buf)
 }
 
+/// The WebP format can't go past this on either side (the encoder would crash).
+const WEBP_MAX: u32 = 16383;
+
+/// Largest picture we make, so a big resize or padding can't run the PC out of memory.
+pub const MAX_PIXELS: u64 = 100_000_000;
+
+pub fn check_pixels(w: u64, h: u64) -> Result<()> {
+    if w * h > MAX_PIXELS {
+        bail!("the result would be too big (over 100 megapixels)");
+    }
+    Ok(())
+}
+
 /// Writes `img` as `fmt`. `quality` applies to lossy formats.
 pub fn save(img: &DynamicImage, out: &Path, fmt: &str, quality: u8) -> Result<()> {
     let bytes = match fmt {
         "jpg" | "jpeg" => jpeg_bytes(img, quality)?,
         "png" => png_bytes(img)?,
         "webp" => {
+            if img.width() > WEBP_MAX || img.height() > WEBP_MAX {
+                bail!("WebP can't be wider or taller than {WEBP_MAX} pixels");
+            }
             let rgba = img.to_rgba8();
             let enc = webp::Encoder::from_rgba(&rgba, rgba.width(), rgba.height());
             enc.encode(quality as f32).to_vec()
@@ -150,8 +224,9 @@ pub fn run(src: &Path, action: &Action, progress: Progress) -> Result<Vec<PathBu
         Action::Compress { level } => compress(src, *level)?,
         Action::Resize { value } => {
             let img = open(src)?;
-            let (w, h) = (img.width() * value / 100, img.height() * value / 100);
-            let small = img.resize_exact(w.max(1), h.max(1), imageops::FilterType::Lanczos3);
+            let (w, h) = (img.width() as u64 * *value as u64 / 100, img.height() as u64 * *value as u64 / 100);
+            check_pixels(w, h)?;
+            let small = img.resize_exact((w as u32).max(1), (h as u32).max(1), imageops::FilterType::Lanczos3);
             let out = out_path(src, Some(&format!("{value}%")), &fmt);
             save(&small, &out, &fmt, 90)?;
             out
@@ -182,7 +257,7 @@ pub fn run(src: &Path, action: &Action, progress: Progress) -> Result<Vec<PathBu
         }
         Action::AddBg { color, padding, radius, shadow } => {
             let img = open(src)?;
-            let composed = add_background(&img, parse_hex(color)?, *padding, *radius, *shadow);
+            let composed = add_background(&img, parse_hex(color)?, *padding, *radius, *shadow)?;
             let out = out_path(src, Some("With Background"), "png");
             save(&composed, &out, "png", 100)?;
             out
@@ -232,6 +307,8 @@ fn compress(src: &Path, level: Level) -> Result<PathBuf> {
             (oxipng::optimize_from_memory(&png_bytes(&img)?, &opts)?, "png")
         }
         "webp" => {
+            // WebP can't be bigger than this on either side, so shrink to fit
+            let img = if img.width().max(img.height()) > WEBP_MAX { img.resize(WEBP_MAX, WEBP_MAX, imageops::FilterType::Lanczos3) } else { img };
             let q = match level {
                 Level::Low => 82.0,
                 Level::Medium => 70.0,
@@ -285,36 +362,60 @@ fn jpeg_is_rotated(src: &Path) -> bool {
     .unwrap_or(false)
 }
 
-/// Drops APP1 (EXIF/XMP), APP12–APP15 and COM segments, keeps ICC (APP2) and the rest.
-fn strip_jpeg(d: &[u8]) -> Result<Vec<u8>> {
+/// Drops APP1 (EXIF/XMP), APP12, APP13, APP15 and COM segments, keeps ICC (APP2), Adobe (APP14)
+/// and the rest. Stops at the end-of-image marker: phones append more pictures after it (motion
+/// photos, gain maps, MPF) that carry their own EXIF and GPS.
+pub(crate) fn strip_jpeg(d: &[u8]) -> Result<Vec<u8>> {
     if d.len() < 4 || d[0] != 0xFF || d[1] != 0xD8 {
         bail!("not a JPEG");
     }
     let mut out = vec![0xFF, 0xD8];
     let mut i = 2;
-    while i + 4 <= d.len() {
+    let mut scanned = false;
+    while i + 2 <= d.len() {
         if d[i] != 0xFF {
             bail!("corrupt JPEG");
         }
         let marker = d[i + 1];
-        if marker == 0xDA {
-            out.extend_from_slice(&d[i..]); // start of scan: copy the rest verbatim
+        if marker == 0xFF {
+            i += 1; // fill byte
+            continue;
+        }
+        if marker == 0xD9 {
+            out.extend_from_slice(&[0xFF, 0xD9]);
             return Ok(out);
+        }
+        if i + 4 > d.len() {
+            break;
         }
         let len = u16::from_be_bytes([d[i + 2], d[i + 3]]) as usize;
         let end = (i + 2 + len).min(d.len());
-        let drop = matches!(marker, 0xE1 | 0xEC..=0xEF | 0xFE);
+        let drop = matches!(marker, 0xE1 | 0xEC | 0xED | 0xEF | 0xFE);
         if !drop {
             out.extend_from_slice(&d[i..end]);
         }
         i = end;
+        if marker == 0xDA {
+            // compressed data runs until a marker that isn't stuffing (FF 00) or a restart (FF D0–D7)
+            let start = i;
+            while i + 1 < d.len() && !(d[i] == 0xFF && d[i + 1] != 0x00 && !(0xD0..=0xD7).contains(&d[i + 1])) {
+                i += 1;
+            }
+            out.extend_from_slice(&d[start..i.min(d.len())]);
+            scanned = true;
+        }
+    }
+    if scanned {
+        // cut short after the picture data: still close it properly
+        out.extend_from_slice(&[0xFF, 0xD9]);
+        return Ok(out);
     }
     bail!("corrupt JPEG")
 }
 
-fn parse_hex(s: &str) -> Result<[u8; 3]> {
+pub(crate) fn parse_hex(s: &str) -> Result<[u8; 3]> {
     let h = s.trim_start_matches('#');
-    if h.len() != 6 {
+    if h.len() != 6 || !h.bytes().all(|b| b.is_ascii_hexdigit()) {
         bail!("bad colour");
     }
     let p = |i: usize| u8::from_str_radix(&h[i..i + 2], 16);
@@ -323,10 +424,11 @@ fn parse_hex(s: &str) -> Result<[u8; 3]> {
 
 /// Places the image on a solid canvas with padding, rounded corners and a soft shadow.
 /// `padding` and `radius` are fractions of the image's longer / shorter side; `shadow` is 0–1.
-fn add_background(img: &DynamicImage, bg: [u8; 3], padding: f64, radius: f64, shadow: f64) -> DynamicImage {
-    let src = img.to_rgba8();
-    let (w, h) = src.dimensions();
+fn add_background(img: &DynamicImage, bg: [u8; 3], padding: f64, radius: f64, shadow: f64) -> Result<DynamicImage> {
+    let (w, h) = (img.width(), img.height());
     let pad = (padding.clamp(0.0, 0.5) * w.max(h) as f64).round() as u32;
+    check_pixels(w as u64 + pad as u64 * 2, h as u64 + pad as u64 * 2)?;
+    let src = img.to_rgba8();
     let r = (radius.clamp(0.0, 0.5) * w.min(h) as f64) as f32;
     let (cw, ch) = (w + pad * 2, h + pad * 2);
     let mut canvas = RgbaImage::from_pixel(cw, ch, Rgba([bg[0], bg[1], bg[2], 255]));
@@ -381,5 +483,5 @@ fn add_background(img: &DynamicImage, bg: [u8; 3], padding: f64, radius: f64, sh
             }
         }
     }
-    DynamicImage::ImageRgba8(canvas)
+    Ok(DynamicImage::ImageRgba8(canvas))
 }

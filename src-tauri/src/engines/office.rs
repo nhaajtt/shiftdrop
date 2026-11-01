@@ -60,7 +60,8 @@ fn convert(src: &Path, out: &Path, to: &str) -> Result<()> {
         "txt" => "txt:Text (encoded):UTF8",
         other => other,
     };
-    // a profile of our own, so a LibreOffice the user has open doesn't swallow the request
+    // a profile of our own, so a LibreOffice the user has open doesn't swallow the request. Jobs
+    // run one at a time, so it is kept between them (a new one costs seconds to set up each time)
     let profile = std::env::temp_dir().join("shiftdrop").join("lo-profile");
     let profile_url = format!("-env:UserInstallation=file:///{}", profile.display().to_string().replace('\\', "/").replace(' ', "%20"));
     let o = super::tools::output_within(
