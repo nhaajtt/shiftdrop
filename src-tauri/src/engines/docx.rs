@@ -42,47 +42,52 @@ pub(crate) fn convert(xml: &str) -> Result<String> {
     loop {
         match r.read_event().context("broken document.xml")? {
             // an empty <w:t/> has no text and no end tag to switch reading off again
-            Event::Empty(e) if e.local_name().as_ref() == b"t" => {}
+            Event::Empty(e) if e.local_name().as_ref() == "t" => {}
             Event::Start(e) | Event::Empty(e) => match e.local_name().as_ref() {
-                b"tbl" => {
+                "tbl" => {
                     depth += 1;
                     if depth == 1 {
                         table.clear();
                     }
                 }
-                b"tr" if depth == 1 => table.push(Vec::new()),
-                b"tc" if depth == 1 => cell = Some(String::new()),
-                b"p" => {
+                "tr" if depth == 1 => table.push(Vec::new()),
+                "tc" if depth == 1 => cell = Some(String::new()),
+                "p" => {
                     para = Some(Para::default());
                     in_run = false;
                 }
-                b"pStyle" => {
-                    if let (Some(p), Some(v)) = (para.as_mut(), attr(&e, b"val")) {
+                "pStyle" => {
+                    if let (Some(p), Some(v)) = (para.as_mut(), attr(&e, "val")) {
                         p.style = v;
                     }
                 }
-                b"numPr" => {
+                "numPr" => {
                     if let Some(p) = para.as_mut() {
                         p.list = true;
                     }
                 }
-                b"r" => {
+                "r" => {
                     bold = false;
                     italic = false;
                     in_run = true;
                 }
-                b"b" => bold = attr(&e, b"val").is_none_or(|v| v != "0" && v != "false"),
-                b"i" => italic = attr(&e, b"val").is_none_or(|v| v != "0" && v != "false"),
-                b"t" => in_text = true,
-                b"tab" if in_run => push(&mut para, "\t"),
+                "b" => bold = attr(&e, "val").is_none_or(|v| v != "0" && v != "false"),
+                "i" => italic = attr(&e, "val").is_none_or(|v| v != "0" && v != "false"),
+                "t" => in_text = true,
+                "tab" if in_run => push(&mut para, "\t"),
                 // a table row is one line in Markdown, so a break inside a cell stays an HTML break
-                b"br" => push(&mut para, if cell.is_some() { "<br>" } else { "  \n" }),
+                "br" => push(&mut para, if cell.is_some() { "<br>" } else { "  \n" }),
                 _ => {}
             },
-            Event::Text(t) if in_text => {
+            // text arrives in pieces around &amp; and the like
+            ev @ (Event::Text(_) | Event::GeneralRef(_)) if in_text => {
                 // the document's own * _ ` \ are escaped, so they never read as formatting (and the
                 // clean-up of "****"/"__" below can't eat them)
-                let s = t.unescape().map(|s| s.into_owned()).unwrap_or_default();
+                let s = match ev {
+                    Event::Text(t) => t.xml10_content().into_owned(),
+                    Event::GeneralRef(r) => super::text::xml_ref(&r),
+                    _ => String::new(),
+                };
                 let s: String = s.chars().flat_map(|c| if matches!(c, '\\' | '*' | '_' | '`') { vec!['\\', c] } else { vec![c] }).collect();
                 if s.trim().is_empty() {
                     push(&mut para, &s);
@@ -97,9 +102,9 @@ pub(crate) fn convert(xml: &str) -> Result<String> {
                 }
             }
             Event::End(e) => match e.local_name().as_ref() {
-                b"t" => in_text = false,
-                b"r" => in_run = false,
-                b"p" => {
+                "t" => in_text = false,
+                "r" => in_run = false,
+                "p" => {
                     let Some(p) = para.take() else { continue };
                     let line = render(&p);
                     if let Some(c) = cell.as_mut() {
@@ -112,12 +117,12 @@ pub(crate) fn convert(xml: &str) -> Result<String> {
                         out += if p.list { "\n" } else { "\n\n" };
                     }
                 }
-                b"tc" if depth == 1 => {
+                "tc" if depth == 1 => {
                     if let (Some(c), Some(row)) = (cell.take(), table.last_mut()) {
                         row.push(c.replace('|', "\\|"));
                     }
                 }
-                b"tbl" => {
+                "tbl" => {
                     depth -= 1;
                     if depth == 0 && !table.is_empty() {
                         out += &md_table(&table);
@@ -168,6 +173,6 @@ fn md_table(rows: &[Vec<String>]) -> String {
     s
 }
 
-fn attr(e: &quick_xml::events::BytesStart, name: &[u8]) -> Option<String> {
-    e.attributes().flatten().find(|a| a.key.local_name().as_ref() == name).map(|a| String::from_utf8_lossy(&a.value).into_owned())
+fn attr(e: &quick_xml::events::BytesStart, name: &str) -> Option<String> {
+    e.attributes().flatten().find(|a| a.key.local_name().as_ref() == name).and_then(|a| a.normalized_value(quick_xml::XmlVersion::Implicit1_0).ok().map(|v| v.into_owned()))
 }

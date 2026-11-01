@@ -569,3 +569,11 @@ fn media_past_the_end_is_an_error() {
     let show = check(&[png, jpg], Action::Slideshow { seconds: 1.0 });
     assert!((tools::duration(&show[0]) - 2.0).abs() < 0.5, "{}", tools::duration(&show[0]));
 }
+
+#[test]
+fn xml_entities_keep_the_spaces_around_them() {
+    let v = super::text::xml_to_value("<a x=\"1 &amp; 2\"><b>Tom &amp; Jerry &#233;t&lt;&gt;</b><c><![CDATA[raw <x>]]></c></a>").unwrap();
+    assert_eq!(v["a"]["b"], "Tom & Jerry ét<>");
+    assert_eq!(v["a"]["@x"], "1 & 2");
+    assert_eq!(v["a"]["c"], "raw <x>");
+}

@@ -482,6 +482,22 @@ fn strip_nulls(v: serde_json::Value) -> serde_json::Value {
     }
 }
 
+/// `&amp;`, `&#233;` and the like, which the XML reader hands over separately from the text around them.
+pub(crate) fn xml_ref(r: &quick_xml::events::BytesRef) -> String {
+    if let Ok(Some(c)) = r.resolve_char_ref() {
+        return c.to_string();
+    }
+    match &**r {
+        "amp" => "&".into(),
+        "lt" => "<".into(),
+        "gt" => ">".into(),
+        "quot" => "\"".into(),
+        "apos" => "'".into(),
+        // an entity the document defines itself: kept as written
+        other => format!("&{other};"),
+    }
+}
+
 /// XML → JSON the common way: attributes as "@name", text as "#text", repeated children as arrays.
 pub(crate) fn xml_to_value(text: &str) -> Result<serde_json::Value> {
     use quick_xml::events::Event;
@@ -505,38 +521,47 @@ pub(crate) fn xml_to_value(text: &str) -> Result<serde_json::Value> {
         if m.is_empty() { Value::Null } else { Value::Object(m) }
     }
     let mut r = quick_xml::Reader::from_str(text);
-    r.config_mut().trim_text(true);
     let mut stack: Vec<(String, Map<String, Value>)> = vec![("".into(), Map::new())];
     let attrs = |e: &quick_xml::events::BytesStart| {
         let mut m = Map::new();
         for a in e.attributes().flatten() {
-            let k = format!("@{}", String::from_utf8_lossy(a.key.as_ref()));
-            m.insert(k, Value::String(a.unescape_value().map(|v| v.into_owned()).unwrap_or_default()));
+            let k = format!("@{}", a.key.as_ref() as &str);
+            m.insert(k, Value::String(a.normalized_value(quick_xml::XmlVersion::Implicit1_0).map(|v| v.into_owned()).unwrap_or_default()));
         }
         m
+    };
+    // text arrives in pieces (around &amp; and CDATA); joined, then trimmed, when a tag starts or ends
+    let mut pending = String::new();
+    let flush = |pending: &mut String, stack: &mut Vec<(String, Map<String, Value>)>| {
+        let t = pending.trim();
+        if !t.is_empty() {
+            if let Some(top) = stack.last_mut() {
+                push(&mut top.1, "#text".into(), Value::String(t.to_string()));
+            }
+        }
+        pending.clear();
     };
     loop {
         match r.read_event().context("not valid XML")? {
             Event::Start(e) => {
+                flush(&mut pending, &mut stack);
                 // each level is a step of recursion later on (writing JSON, dropping it)
                 if stack.len() > 100 {
                     bail!("the XML is nested too deeply (over 100 levels)");
                 }
-                stack.push((String::from_utf8_lossy(e.name().as_ref()).into_owned(), attrs(&e)))
+                stack.push(((e.name().as_ref() as &str).to_string(), attrs(&e)))
             }
             Event::Empty(e) => {
-                let k = String::from_utf8_lossy(e.name().as_ref()).into_owned();
+                flush(&mut pending, &mut stack);
+                let k = (e.name().as_ref() as &str).to_string();
                 let v = finish(attrs(&e));
-                push(&mut stack.last_mut().unwrap().1, k, v);
+                push(&mut stack.last_mut().context("broken XML")?.1, k, v);
             }
-            Event::Text(t) => {
-                let t = t.unescape().map(|t| t.into_owned()).unwrap_or_default();
-                if !t.is_empty() {
-                    push(&mut stack.last_mut().unwrap().1, "#text".into(), Value::String(t));
-                }
-            }
-            Event::CData(t) => push(&mut stack.last_mut().unwrap().1, "#text".into(), Value::String(String::from_utf8_lossy(&t).into_owned())),
+            Event::Text(t) => pending.push_str(&t.xml10_content()),
+            Event::GeneralRef(g) => pending.push_str(&xml_ref(&g)),
+            Event::CData(t) => pending.push_str(&t.xml10_content()),
             Event::End(_) => {
+                flush(&mut pending, &mut stack);
                 let (k, m) = stack.pop().context("broken XML")?;
                 push(&mut stack.last_mut().context("broken XML")?.1, k, finish(m));
             }
