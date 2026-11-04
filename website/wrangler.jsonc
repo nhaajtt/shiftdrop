@@ -4,6 +4,7 @@
   "assets": {
     "directory": "."
   },
+  "routes": [{ "pattern": "shiftdrop.nhaajt.com", "custom_domain": true }],
   "observability": {
     "enabled": true
   }
