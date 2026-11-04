@@ -1,0 +1,6 @@
+.git
+.gitignore
+wrangler.jsonc
+vercel.json
+node_modules
+.wrangler
